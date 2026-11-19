@@ -14,17 +14,17 @@
 //   Kiko.app                the helper app (name.ts helperApp): the mic, hotkey, speech and permissions helpers,
 //                           whose macOS permissions are its own (platform/macos/helper-app.ts)
 //   hooks/*.mjs, statusline/kiko-status.mjs   the scripts the agents run, run by the executable
-//   pocket/                 Pocket TTS's server and setup script (its Python goes in POCKET_VENV)
+//   pocket/                 Pocket TTS's server, setup script and requirements (its Python goes in POCKET_SHARED_VENV)
 //   tmux/                   the window's tmux.conf and the empty pane's script
 //   bin/tmux                tmux itself, built for the release (scripts/build-tmux.sh): Kiko's own server runs it
 //   terminfo/               the tmux-256color entry its panes' programs need (macOS 13 has none)
 //   LICENSE.md, THIRD_PARTY_NOTICES.md   Kiko's licence; Bun's, the bundled packages' and tmux's (scripts/notices/notices.ts)
 // Imports nothing that loads .env or writes logs, so anything can import it.
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { envVar, FLAVOUR, type Flavour, SLUG } from "./name.ts";
+import { envVar, FLAVOUR, type Flavour, flavourNames, SLUG } from "./name.ts";
 import { shellWord } from "./shell.ts";
 
 /** An installed copy: this code is built into the executable (Bun's embedded files, under /$bunfs/), not read from a checkout. */
@@ -71,14 +71,60 @@ export const LOG_DIR = envVar("LOG_DIR") ?? join(STATE_DIR, "logs");
 export const ENV_FILE = INSTALLED || FLAVOUR === "release" ? null : (envVar("ENV_FILE") ?? join(APP_ROOT, ".env")) || null;
 
 /**
- * Pocket TTS's Python: pocket/.venv in a checkout; for an installed copy, outside the version
- * folders, so an update keeps it. Beside it, Pocket's own uv (pocket-uv/, when setup.sh had to fetch
- * one) and model (pocket-hf/): core/pocket-tts.ts. KIKO_POCKET_VENV puts it elsewhere (the app
- * harness's start with no Pocket: tests/harness/test-start.ts).
+ * Where Pocket TTS lives (`installed`: an installed copy; `root`: the checkout; `env`: for
+ * KIKO_POCKET_VENV):
+ *   - home: its own folder, once per flavour and outside any checkout or version folder, so every
+ *     copy of a flavour shares one install (as they share the settings, the keys and the helper
+ *     app's permissions) and an update keeps it: ~/.local/share/kiko for an installed copy,
+ *     ~/.local/share/kiko-dev for a checkout (by where the code is, not KIKO_FLAVOUR: a checkout run
+ *     as the release never touches the installed release's venv). The two never share a venv (a
+ *     checkout may change Pocket's Python packages); each clones the other's model (core/pocket-tts.ts).
+ *   - shared: its venv, pocket-venv in its home; KIKO_POCKET_VENV puts it elsewhere (the app
+ *     harness's start with no Pocket: tests/harness/test-start.ts; the unit tests). Beside it,
+ *     Pocket's own uv (pocket-uv/, when setup.sh had to fetch one), its model (pocket-hf/) and its
+ *     download's files (pocket-prep.*): core/pocket-tts.ts.
+ *   - legacy: where Kiko Dev kept Pocket before it was shared, a checkout's own pocket/.venv: this
+ *     checkout's, then (a git worktree) its main checkout's. Only read, never written: one that's
+ *     whole is used until the shared venv is ready (core/pocket-tts.ts pickPocketVenv), and its
+ *     model is cloned from (pocketModelSources). None for an installed copy, nor with KIKO_POCKET_VENV.
+ *   - log: its server's log, in the flavour's state folder (~/.local/state/kiko, or kiko-dev), not
+ *     the checkout; beside KIKO_POCKET_VENV when that's set.
  */
-export const POCKET_VENV = envVar("POCKET_VENV") || (INSTALLED ? join(SHARE_DIR, "pocket-venv") : join(APP_ROOT, "pocket", ".venv"));
-/** Pocket TTS's server log. */
-export const POCKET_LOG = INSTALLED ? join(STATE_DIR, "pocket-server.log") : join(APP_ROOT, "pocket", "server.log");
+export function pocketPaths(env: NodeJS.ProcessEnv = process.env, home = homedir(), installed = INSTALLED, root = APP_ROOT) {
+  const slug = installed ? SLUG : flavourNames("dev").slug;
+  const own = envVar("POCKET_VENV", env);
+  const pocketHome = join(home, ".local", "share", slug);
+  const shared = own || join(pocketHome, "pocket-venv");
+  return {
+    home: pocketHome,
+    shared,
+    legacy: installed || own ? [] : legacyCheckouts(root).map((checkout) => join(checkout, "pocket", ".venv")),
+    log: own ? join(dirname(shared), "pocket-server.log") : join(home, ".local", "state", slug, "pocket-server.log"),
+  };
+}
+
+/** A checkout and, when it's a git worktree (its .git a file naming <main>/.git/worktrees/<name>), its main checkout. */
+export function legacyCheckouts(root: string): string[] {
+  const out = [resolve(root)];
+  try {
+    const m = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(join(root, ".git"), "utf8"));
+    const gitdir = m ? resolve(root, m[1]) : "";
+    if (basename(dirname(gitdir)) === "worktrees" && basename(dirname(dirname(gitdir))) === ".git") out.push(dirname(dirname(dirname(gitdir))));
+  } catch {
+    // Not a worktree (its .git a folder), or not a git checkout at all.
+  }
+  return [...new Set(out)];
+}
+
+const POCKET = pocketPaths();
+/** Pocket's own folder for this flavour (pocketPaths home). */
+export const POCKET_HOME = POCKET.home;
+/** Pocket TTS's Python, the flavour's shared venv (pocketPaths shared). The one in use may be an older checkout's own until it's ready: core/pocket-tts.ts POCKET_VENV. */
+export const POCKET_SHARED_VENV = POCKET.shared;
+/** A checkout's own pocket/.venv from before it was shared, this one's and its main checkout's (pocketPaths legacy). */
+export const LEGACY_POCKET_VENVS = POCKET.legacy;
+/** Pocket TTS's server log (pocketPaths log). */
+export const POCKET_LOG = POCKET.log;
 
 /**
  * A file that ships with the app, by its path in the repo; `installed`: its path in the installed

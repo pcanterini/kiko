@@ -1,0 +1,4 @@
+# Pocket TTS's Python packages, installed by setup.sh. The venv keeps this file's SHA-256
+# (.kiko-requirements), and the app sets it up again when that differs (src/core/pocket-tts.ts
+# requirementsMatch): the venv is shared by every checkout, so a change here reaches it.
+pocket-tts==4.0.1

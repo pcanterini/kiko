@@ -23,7 +23,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import { appFile, INSTALLED, POCKET_LOG, POCKET_VENV } from "./app-root.ts";
+import { APP_ROOT, appFile, INSTALLED, LEGACY_POCKET_VENVS, legacyCheckouts, POCKET_LOG, POCKET_SHARED_VENV } from "./app-root.ts";
 import { appEnv } from "./env.ts";
 import { log } from "./log.ts";
 import { envVar, flavourNames, SLUG } from "./name.ts";
@@ -36,19 +36,22 @@ type Handlers = { onAudio: (pcm: Buffer) => void; onDone: () => void; marks?: Vo
 
 /** What the app's speaker plays: 24 kHz mono s16le. Pocket TTS (Mimi codec) outputs exactly this. */
 const OUT_RATE = 24000;
-// Its scripts (serve.py, setup.sh) ship with the app; its Python is POCKET_VENV (pocket/.venv in a
-// checkout, ~/.local/share/kiko/pocket-venv for an installed copy, so an update keeps it). Beside
-// the venv: pocket-uv/ (the uv setup.sh fetched when there was none, with its Python and cache) and
-// pocket-hf/ (the model: pocketHfHome), so all of it is Kiko's and `kiko uninstall` takes it.
+// Its scripts (serve.py, setup.sh, requirements.txt) ship with the app, one set per checkout or
+// version; its Python is one venv per flavour, shared by every copy (app-root.ts POCKET_SHARED_VENV:
+// ~/.local/share/kiko/pocket-venv for an installed copy, ~/.local/share/kiko-dev/pocket-venv for a
+// checkout), so the code is the copy's own and the environment is shared. Beside the venv:
+// pocket-uv/ (the uv setup.sh fetched when there was none, with its Python and cache) and pocket-hf/
+// (the model: pocketHfHome), so all of it is Kiko's and `kiko uninstall` takes it.
 const POCKET_DIR = appFile("pocket");
 const LOG_PATH = POCKET_LOG;
-const PYTHON = join(POCKET_VENV, "bin", "python");
+/** The packages setup.sh installs: the venv keeps this file's SHA-256 (.kiko-requirements), and one that differs is set up again. */
+export const POCKET_REQUIREMENTS = join(POCKET_DIR, "requirements.txt");
 
 /**
  * How to install it: `sh <script>` with `env` added to the environment (setup.sh puts it in
  * POCKET_VENV). A few minutes and about 1 GB with the model; run in the background.
  */
-export const pocketSetup = { script: join(POCKET_DIR, "setup.sh"), serve: join(POCKET_DIR, "serve.py"), env: { POCKET_VENV } };
+export const pocketSetup = { script: join(POCKET_DIR, "setup.sh"), serve: join(POCKET_DIR, "serve.py"), env: { POCKET_VENV: POCKET_SHARED_VENV } };
 
 /** Built-in English voices (precomputed embeddings, ~6 MB each, downloaded on first use). */
 export const POCKET_VOICES = [
@@ -78,13 +81,50 @@ export const DEFAULT_POCKET_VOICE = "george";
 
 /**
  * Whether pocket/setup.sh has installed it (and finished: it leaves .installing in the venv until
- * then): without it Pocket can't start, so a missing Cartesia key means the macOS voice (keys.ts
- * pickEngines). Not while first-run setup's download (pocket-prep.ts) is still fetching the model.
+ * then) for this copy's requirements (requirementsMatch): without it Pocket can't start, so a
+ * missing Cartesia key means the macOS voice (keys.ts pickEngines). Not while first-run setup's
+ * download (pocket-prep.ts) is still fetching the model.
  */
-export const pocketInstalled = (venv = POCKET_VENV) => existsSync(join(venv, "bin", "python")) && !existsSync(join(venv, ".installing")) && !pocketPreparing(venv);
+export const pocketInstalled = (venv = POCKET_VENV, requirements = POCKET_REQUIREMENTS) =>
+  existsSync(join(venv, "bin", "python")) && !existsSync(join(venv, ".installing")) && !pocketPreparing(venv) && requirementsMatch(venv, requirements);
 
-/** Where first-run setup's download keeps its pid, status and log: beside the venv (pocket-prep.ts). */
-export const prepFile = (venv: string, name: "preparing" | "status" | "log") => join(dirname(venv), `pocket-prep.${name === "log" ? "log" : name}`);
+/** The SHA-256 setup.sh writes in the venv when it's done: of the requirements.txt it installed. */
+export const requirementsStamp = (venv: string) => join(venv, ".kiko-requirements");
+
+/**
+ * The venv was set up for `requirements` (this copy's pocket/requirements.txt): its stamp holds
+ * that file's SHA-256. A venv with no stamp (set up before there was one: an older install, or a
+ * checkout's own pocket/.venv) counts, as it always did; so does a copy with no requirements.txt.
+ * One set up for other requirements (another checkout changed them) doesn't: setup.sh runs again.
+ */
+export function requirementsMatch(venv: string, requirements = POCKET_REQUIREMENTS): boolean {
+  let stamp: string;
+  try {
+    stamp = readFileSync(requirementsStamp(venv), "utf8").trim();
+  } catch {
+    return true;
+  }
+  try {
+    return stamp === createHash("sha256").update(readFileSync(requirements)).digest("hex");
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * The venv this run speaks with: the shared one (`shared`: app-root.ts POCKET_SHARED_VENV) when it's
+ * installed; else, for Kiko Dev, a checkout's own pocket/.venv from before it was shared (`legacy`:
+ * app-root.ts LEGACY_POCKET_VENVS) that's whole, so a Mac that has Pocket never goes without it
+ * while the shared one is made (app.ts starts that in the background, its model cloned from the
+ * old one's); else the shared one, to be installed. Fixed for the run.
+ */
+export function pickPocketVenv(shared = POCKET_SHARED_VENV, legacy: string[] = LEGACY_POCKET_VENVS, requirements = POCKET_REQUIREMENTS): string {
+  if (pocketInstalled(shared, requirements)) return shared;
+  return legacy.find((venv) => venv !== shared && pocketInstalled(venv, requirements)) ?? shared;
+}
+
+/** Where first-run setup's download keeps its pid, status, log and the lock its start takes: beside the venv (pocket-prep.ts). */
+export const prepFile = (venv: string, name: "preparing" | "status" | "log" | "lock") => join(dirname(venv), `pocket-prep.${name}`);
 
 /**
  * Pocket's own Hugging Face folder (HF_HOME for its server: here and pocket-prep.ts), beside the
@@ -117,27 +157,48 @@ export function sharedHfHubs(env: NodeJS.ProcessEnv = process.env, home = homedi
 }
 
 /**
- * The other flavour's own Pocket model folder (its pocketHfHome's hub), where it always is: for a
- * checkout (Kiko Dev), the release's in ~/.local/share/kiko; for the release, the checkout
- * ~/.local/bin/kiko-dev links to (`pnpm link:dev`). Undefined when there's no such link.
+ * The checkout ~/.local/bin/kiko-dev links to (`pnpm link:dev`): Kiko Dev's, as the release knows it.
+ * Undefined when there's no such link.
  */
-export function otherFlavourHub(home = homedir(), installed = INSTALLED): string | undefined {
-  if (!installed) return join(home, ".local", "share", SLUG, "pocket-hf", "hub");
+export function devCheckout(home = homedir()): string | undefined {
   const command = flavourNames("dev").command;
   try {
     const link = join(home, ".local", "bin", command);
     const target = resolve(dirname(link), readlinkSync(link));
     if (basename(target) !== command || basename(dirname(target)) !== "bin") return undefined;
-    return join(dirname(dirname(target)), "pocket", "pocket-hf", "hub");
+    return dirname(dirname(target));
   } catch {
     return undefined;
   }
 }
 
-/** Where Pocket's model may be already, in the order they're tried (adoptSharedModel): the shared caches (sharedHfHubs), then the other flavour's. */
-export function pocketModelSources(env: NodeJS.ProcessEnv = process.env, home = homedir(), installed = INSTALLED): string[] {
+/**
+ * The other flavour's own Pocket model folder (its pocketHfHome's hub), where it always is: for a
+ * checkout (Kiko Dev), the release's in ~/.local/share/kiko; for the release, Kiko Dev's shared one
+ * in ~/.local/share/kiko-dev.
+ */
+export function otherFlavourHub(home = homedir(), installed = INSTALLED): string {
+  return join(home, ".local", "share", installed ? flavourNames("dev").slug : SLUG, "pocket-hf", "hub");
+}
+
+/**
+ * Where Kiko Dev kept Pocket's model before it was shared (each checkout's pocket/pocket-hf/hub):
+ * this checkout's and its main checkout's (a worktree), and the one ~/.local/bin/kiko-dev links to.
+ */
+export function legacyHubs(home = homedir(), installed = INSTALLED, root = APP_ROOT): string[] {
+  const dev = devCheckout(home);
+  const checkouts = [...(installed ? [] : legacyCheckouts(root)), ...(dev ? [dev] : [])];
+  return checkouts.map((checkout) => join(checkout, "pocket", "pocket-hf", "hub"));
+}
+
+/**
+ * Where Pocket's model may be already, in the order they're tried (adoptSharedModel): the shared
+ * caches (sharedHfHubs), the other flavour's own (otherFlavourHub), then the checkouts' own from
+ * before it was shared (legacyHubs). Pocket's own folder among them is skipped by adoptSharedModel.
+ */
+export function pocketModelSources(env: NodeJS.ProcessEnv = process.env, home = homedir(), installed = INSTALLED, root = APP_ROOT): string[] {
   if (envVar("POCKET_MODEL_FROM", env) !== undefined) return sharedHfHubs(env, home);
-  return uniquePaths([...sharedHfHubs(env, home), otherFlavourHub(home, installed)], home);
+  return uniquePaths([...sharedHfHubs(env, home), otherFlavourHub(home, installed), ...legacyHubs(home, installed, root)], home);
 }
 
 /** Each path once, absolute (~/ for the home), in order; unset and relative ones left out. */
@@ -360,6 +421,16 @@ export function pocketPreparing(venv = POCKET_VENV): boolean {
   }
 }
 
+/**
+ * The venv this run speaks with (pickPocketVenv): the shared one, or an older checkout's own until
+ * the shared one is ready. Everything of Pocket's beside it (its uv, model and download's files)
+ * goes with it.
+ */
+export const POCKET_VENV = pickPocketVenv();
+
+/** Speaking from a checkout's own pocket/.venv from before Pocket was shared: the shared one isn't ready yet (app.ts makes it). */
+export const POCKET_ON_LEGACY = POCKET_VENV !== POCKET_SHARED_VENV;
+
 type Options = { port?: number; voice?: string; startupTimeoutMs?: number; voicesDir?: string };
 
 /**
@@ -580,15 +651,16 @@ export class PocketTts {
   private async start() {
     if (await this.isPocketServer()) return;
     if (!pocketInstalled()) {
-      throw new Error(`Pocket TTS is not installed. Run: POCKET_VENV=${POCKET_VENV} sh ${pocketSetup.script}`);
+      throw new Error(`Pocket TTS is not installed. Run: POCKET_VENV=${POCKET_SHARED_VENV} sh ${pocketSetup.script}`);
     }
     // Its model in its own folder (pocketHfHome); one another install has already, copied over first.
-    adoptSharedModel();
+    // Not into an older checkout's own pocket/.venv's (POCKET_ON_LEGACY): that one is only read.
+    if (!POCKET_ON_LEGACY) adoptSharedModel();
     mkdirSync(dirname(LOG_PATH), { recursive: true });
     const log = openSync(LOG_PATH, "w");
     // A built-in voice: yours are sent with each sentence, so one that doesn't load never stops the server.
     const args = ["serve.py", "--host", "127.0.0.1", "--port", String(this.port), "--default-voice", this.builtInVoice];
-    const proc = spawn(PYTHON, args, { cwd: POCKET_DIR, stdio: ["pipe", log, log], env: { ...process.env, ...pocketHfEnv() } });
+    const proc = spawn(join(POCKET_VENV, "bin", "python"), args, { cwd: POCKET_DIR, stdio: ["pipe", log, log], env: { ...process.env, ...pocketHfEnv() } });
     closeSync(log);
     this.proc = proc;
     proc.stdin!.on("error", () => {});

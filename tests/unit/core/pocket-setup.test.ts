@@ -19,6 +19,7 @@ import { pocketPrepState, startPocketPrep } from "../../../src/core/pocket-prep.
 import { pocketHfEnv, prepFile } from "../../../src/core/pocket-tts.ts";
 
 const SETUP = fileURLToPath(new URL("../../../pocket/setup.sh", import.meta.url));
+const REQUIREMENTS = fileURLToPath(new URL("../../../pocket/requirements.txt", import.meta.url));
 const ARCH = process.arch === "arm64" ? "aarch64" : "x86_64";
 const TOOLS = ["/usr/bin/dirname", "/usr/bin/touch", "/usr/bin/uname", "/usr/bin/curl", "/usr/bin/shasum", "/usr/bin/tar", "/usr/bin/mktemp", "/usr/bin/cut", "/usr/sbin/sysctl"];
 const skip = process.platform !== "darwin" ? "macOS only" : false;
@@ -43,6 +44,7 @@ function world() {
   mkdirSync(join(dir, "home"));
   for (const tool of TOOLS) if (existsSync(tool)) symlinkSync(tool, join(bin, tool.split("/").pop()!));
   writeFileSync(join(pocket, "setup.sh"), readFileSync(SETUP, "utf8"));
+  writeFileSync(join(pocket, "requirements.txt"), readFileSync(REQUIREMENTS, "utf8"));
   const pin = (sha: string) =>
     writeFileSync(
       join(pocket, "setup.sh"),
@@ -81,7 +83,7 @@ describe("pocket/setup.sh: what installs Pocket", { skip }, () => {
     );
     assert.equal(existsSync(join(uvHome, "bin", "uv")), false, "no uv of its own");
     assert.equal(existsSync(join(w.venv, ".installing")), false, "finished");
-    assert.match(run.stdout, /pocket-tts 4\.0\.1 installed/);
+    assert.match(run.stdout, /Pocket TTS installed in .*: pocket-tts==4\.0\.1$/m);
   });
 
   test("no uv, a Python 3.10+: a venv of it and pip (no download cache kept); nothing fetched", () => {

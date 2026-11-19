@@ -97,6 +97,10 @@ process.env.KIKO_VOICE_CAN = "messages";
 // (core/pocket-tts.ts pocketModelSources, sharedHfHubs): only here, where nothing is. A test that
 // wants a "shared cache" makes one in a temp folder and passes it.
 process.env.KIKO_POCKET_MODEL_FROM = join(root, "no-shared-hf-hub");
+// Nor is Pocket itself the Mac's: its venv (core/app-root.ts pocketPaths) is one that isn't there,
+// never ~/.local/share/kiko-dev/pocket-venv or a checkout's pocket/.venv. The path choice is tested
+// with a fake home (pocket-shared.test.ts).
+process.env.KIKO_POCKET_VENV = join(root, "no-pocket", "pocket-venv");
 process.env.KIKO_KEYCHAIN = "off";
 process.env.KIKO_SIGN_IDENTITY = "-";
 // Never the real helper app (platform/macos/helper-app.ts): a helper a test starts is its own child.

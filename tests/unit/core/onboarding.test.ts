@@ -384,6 +384,8 @@ describe("Pocket's background download", () => {
     );
     assert.equal(prepWhy(join(tmpdir(), "no-such-dir", "venv")), "");
     writeFileSync(prepFile(venv, "status"), "ready\n");
+    assert.notEqual((await look()).state, "ready", "ready only with the venv installed");
+    writeFileSync(join(venv, "bin", "python"), "");
     assert.equal((await look()).fraction, 1);
   });
 
@@ -396,10 +398,10 @@ describe("Pocket's background download", () => {
   });
 
   test("Pocket the voice but not installed in this copy: said once as its download starts, the macOS voice meanwhile", () => {
-    assert.equal(pocketMissingLine("none"), "Setting up Pocket, the free voice, for this copy of Kiko: the macOS voice speaks until it's ready. Settings → Voice changes it.");
+    assert.equal(pocketMissingLine("none"), "Setting up Pocket, the free voice, for Kiko: the macOS voice speaks until it's ready. Settings → Voice changes it.");
     assert.equal(
       pocketMissingLine("failed", "Pocket TTS: couldn't download uv (offline?)"),
-      "Setting up Pocket, the free voice, for this copy of Kiko: the macOS voice speaks until it's ready. It didn't finish last time (Pocket TTS: couldn't download uv (offline?)), so it's trying again. Settings → Voice changes it.",
+      "Setting up Pocket, the free voice, for Kiko: the macOS voice speaks until it's ready. It didn't finish last time (Pocket TTS: couldn't download uv (offline?)), so it's trying again. Settings → Voice changes it.",
     );
     assert.doesNotMatch(pocketMissingLine("failed"), /\(\)/, "no log line: no empty brackets");
   });

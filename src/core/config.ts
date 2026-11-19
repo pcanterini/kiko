@@ -38,10 +38,10 @@ const offIfEmpty = (value: string) => (["", "off", "false", "none"].includes(val
 export const enginesFor = (s: Settings) =>
   pickEngines({ tts: settingEnv("tts") ?? s.tts, stt: settingEnv("stt") ?? s.stt, llm: settingEnv("llm") ?? s.llm }, keysInUse(), pocketInstalled(), viaAccount());
 /**
- * Pocket is the voice that would speak if it were installed in this copy: chosen (settings or
- * KIKO_TTS), or with nothing chosen the free voice picked (no Cartesia key). Not for Cartesia chosen
- * without its key, whose stand-in is Pocket only once it's there. app.ts starts Pocket's download
- * at start when it's wanted and missing (a new clone: settings shared, the venv the copy's own).
+ * Pocket is the voice that would speak if it were installed: chosen (settings or KIKO_TTS), or with
+ * nothing chosen the free voice picked (no Cartesia key). Not for Cartesia chosen without its key,
+ * whose stand-in is Pocket only once it's there. app.ts starts Pocket's download at start when it's
+ * wanted and missing (the flavour's shared venv not there yet, or set up for other requirements).
  */
 export function pocketWanted(s: Settings = loadSettings()): boolean {
   const chosen = settingEnv("tts") ?? s.tts;

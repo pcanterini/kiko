@@ -28,7 +28,8 @@ import { keyStore } from "./platform/keys.ts";
 import { noLinkAfter } from "./core/mic-device.ts";
 import { pocketMissingLine, pocketNote, pocketPrepState, prepWhy, startPocketPrep } from "./core/pocket-prep.ts";
 import { acceptedNow, TERMS_DATE, termsNotice } from "./core/terms.ts";
-import { PocketTts, pocketInstalled } from "./core/pocket-tts.ts";
+import { POCKET_ON_LEGACY, POCKET_VENV, PocketTts, pocketInstalled } from "./core/pocket-tts.ts";
+import { POCKET_SHARED_VENV } from "./core/app-root.ts";
 import { findSession, listedId, sessionName } from "./core/sessions.ts";
 import { classifierEnabled } from "./core/classifier.ts";
 import { voiceAllows } from "./core/routing-rules.ts";
@@ -468,19 +469,28 @@ async function main() {
     ui.info(`(${termsSaid.line})`);
     rememberSettings({ termsAccepted: acceptedNow() });
   }
-  // Pocket the voice (chosen, or the free one with nothing chosen) but not installed in this copy: a
-  // new clone or install, whose venv is its own while the settings are shared with the other copies
-  // of this flavour, so setup (and its pocketSetup "noted") was another copy's. The macOS voice
+  // Pocket the voice (chosen, or the free one with nothing chosen) but not installed: a new Mac, or
+  // the flavour's shared venv (app-root.ts POCKET_SHARED_VENV) set up for another checkout's
+  // requirements, while the settings say setup was done (its pocketSetup "noted"). The macOS voice
   // speaks (keys.ts pickEngines), Pocket's download starts here as setup starts it (pocket-prep.ts),
   // said once, and the app switches when it's ready (the watch below). Running already (setup's, or
-  // a run before this one): nothing more, nothing said.
+  // another copy's): nothing more, nothing said.
   if (config.tts === "say" && !pocketInstalled() && pocketWanted()) {
     const before = pocketPrepState();
     const why = before === "failed" ? prepWhy() : "";
     const did = before === "running" ? "running" : startPocketPrep();
     log("pocket_prep", { did, by: "app", before });
     if (did === "started") ui.info(`(${pocketMissingLine(before, why)})`);
-    if (did === "no-setup") ui.info("(Pocket, the free voice, isn't installed in this copy and can't be set up here (no pocket/setup.sh), so the macOS voice speaks. Settings → Voice changes it.)");
+    if (did === "no-setup") ui.info("(Pocket, the free voice, isn't installed and can't be set up here (no pocket/setup.sh), so the macOS voice speaks. Settings → Voice changes it.)");
+  }
+  // Pocket speaking from this checkout's own pocket/.venv (or its main checkout's), from before it was
+  // shared: the shared venv is made in the background (setup.sh, quick with uv; the model cloned
+  // from the old one's pocket-hf/, nothing downloaded again), nothing said. This run keeps the old
+  // one; the next start finds the shared one ready and uses it, the same voice. Only when Pocket
+  // speaks, or would.
+  if (POCKET_ON_LEGACY && (config.tts === "pocket" || pocketWanted())) {
+    const did = startPocketPrep(POCKET_SHARED_VENV);
+    log("pocket_prep", { did, by: "move", from: POCKET_VENV });
   }
   // Pocket, downloaded in the background by first-run setup: ready and speaking now, or failed, said once.
   const pocketSaid = pocketNote(loadSettings().pocketSetup, config.tts, pocketPrepState());

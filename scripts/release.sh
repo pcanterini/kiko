@@ -246,7 +246,7 @@ build_arch() {
   cp hooks/claude-code-hook.mjs hooks/codex-hook.mjs hooks/quick-permission.mjs hooks/quick-guard.mjs hooks/lib.mjs hooks/guard.mjs "$dir/hooks/" || return 1
   cp hooks/guard/*.mjs "$dir/hooks/guard/" || return 1
   cp "statusline/$SLUG-status.mjs" "$dir/statusline/" || return 1
-  cp pocket/serve.py pocket/setup.sh "$dir/pocket/" || return 1
+  cp pocket/serve.py pocket/setup.sh pocket/requirements.txt "$dir/pocket/" || return 1
   cp src/terminals/tmux/tmux.conf src/terminals/tmux/placeholder.sh "$dir/tmux/" || return 1
   if [ -f LICENSE.md ]; then cp LICENSE.md "$dir/" || return 1; fi
 

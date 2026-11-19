@@ -20,7 +20,7 @@ try {
   console.log("\n# Pocket chosen but not installed in this copy, and the mic failing: the app starts all the same");
   await until(() => lines.some((l) => l.text.startsWith("Ready.")), 10_000, "the app to be ready");
   assert.equal(config.tts, "say", "the macOS voice speaks this run");
-  const setting = lines.filter((l) => l.text.includes("Setting up Pocket, the free voice, for this copy"));
+  const setting = lines.filter((l) => l.text.includes("Setting up Pocket, the free voice, for Kiko"));
   assert.equal(setting.length, 1, "Pocket's setup is said once");
   assert.match(setting[0].text, /the macOS voice speaks until it's ready\. Settings → Voice changes it\.\)$/);
   const preps = logEntries().filter((l) => l.event === "pocket_prep");
@@ -29,7 +29,7 @@ try {
     [["started", "app", "none"]],
     "its download started once, by the app",
   );
-  // The stand-in ran once, for this copy's venv, and failed: nothing to switch to.
+  // The stand-in ran once, for the venv KIKO_POCKET_VENV names, and failed: nothing to switch to.
   await until(() => pocketPrepState() === "failed", 5000, "the stand-in setup to finish");
   assert.deepEqual(readFileSync(RAN, "utf8").trim().split("\n"), [process.env.KIKO_POCKET_VENV]);
   assert.ok(!logEntries().some((l) => l.event === "pocket_switched"), "never switched to Pocket");

@@ -1,7 +1,11 @@
 #!/bin/sh
-# Installs Kyutai Pocket TTS into a venv of its own (never the system Python): POCKET_VENV, else
-# pocket/.venv beside this script (a checkout). An installed copy passes
-# ~/.local/share/kiko/pocket-venv, outside its version folders, so an update keeps it.
+# Installs Kyutai Pocket TTS (the packages in requirements.txt beside it) into a venv of its own
+# (never the system Python): POCKET_VENV, else pocket/.venv beside this script. The app passes its
+# flavour's shared one, outside any checkout or version folder (src/core/app-root.ts
+# POCKET_SHARED_VENV): ~/.local/share/kiko/pocket-venv for an installed copy,
+# ~/.local/share/kiko-dev/pocket-venv for a checkout. Run again on a venv it made, it brings the
+# packages up to requirements.txt; when it's done it writes that file's SHA-256 in the venv
+# (.kiko-requirements), so a checkout whose requirements differ sets it up again.
 #
 # It needs nothing installed beforehand. What it uses, the first there:
 #   1. a uv on the PATH (yours: used, never changed);
@@ -21,7 +25,14 @@
 set -e
 cd "$(dirname "$0")"
 VENV="${POCKET_VENV:-$(pwd)/.venv}"
-VERSION="${POCKET_TTS_VERSION:-4.0.1}"
+REQUIREMENTS="$(pwd)/requirements.txt"
+# The packages (requirements.txt: one per line, # for a comment), read by the shell alone.
+[ -r "$REQUIREMENTS" ] || { echo "Pocket TTS: there's no $REQUIREMENTS" >&2; exit 1; }
+PACKAGES=""
+while IFS= read -r line || [ -n "$line" ]; do
+  for word in ${line%%#*}; do PACKAGES="$PACKAGES $word"; done
+done < "$REQUIREMENTS"
+[ -n "$PACKAGES" ] || { echo "Pocket TTS: no packages in $REQUIREMENTS" >&2; exit 1; }
 HERE="$(dirname "$VENV")"
 UV_HOME="$HERE/pocket-uv"
 OWN_UV="$UV_HOME/bin/uv"
@@ -101,12 +112,15 @@ INSTALLING="$VENV/.installing"
 if [ -n "$UV" ]; then
   [ -x "$VENV/bin/python" ] || "$UV" venv --python 3.12 "$VENV"
   touch "$INSTALLING"
-  "$UV" pip install --python "$VENV/bin/python" "pocket-tts==$VERSION"
+  # shellcheck disable=SC2086 # one word per package
+  "$UV" pip install --python "$VENV/bin/python" $PACKAGES
 else
   [ -x "$VENV/bin/pip" ] || python3 -m venv "$VENV"
   touch "$INSTALLING"
   # No download cache kept: nothing of Pocket's left in ~/Library/Caches/pip.
-  "$VENV/bin/pip" install --no-cache-dir "pocket-tts==$VERSION"
+  # shellcheck disable=SC2086 # one word per package
+  "$VENV/bin/pip" install --no-cache-dir $PACKAGES
 fi
+shasum -a 256 "$REQUIREMENTS" | cut -d' ' -f1 > "$VENV/.kiko-requirements"
 rm -f "$INSTALLING"
-echo "pocket-tts $VERSION installed in $VENV"
+echo "Pocket TTS installed in $VENV:$PACKAGES"

@@ -240,6 +240,7 @@ describe("install.sh, the installed kiko and kiko uninstall", { skip }, () => {
       "hooks/guard/parse.mjs",
       "statusline/kiko-status.mjs",
       "pocket/setup.sh",
+      "pocket/requirements.txt",
       "tmux/tmux.conf",
       "bin/tmux",
       "terminfo/74/tmux-256color",

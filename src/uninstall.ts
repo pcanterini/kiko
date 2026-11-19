@@ -31,7 +31,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { BIN_LINK, CURRENT_LINK, POCKET_VENV, SHARE_DIR, STATE_DIR } from "./core/app-root.ts";
+import { BIN_LINK, CURRENT_LINK, POCKET_SHARED_VENV, SHARE_DIR, STATE_DIR } from "./core/app-root.ts";
 import { ACCOUNT_SITE, CONFIG_FOLDER, DOMAIN, envVar, NAME, OWN, SLUG, STATE_PATH } from "./core/name.ts";
 import { andList } from "./core/text.ts";
 import { appRunning, appSocket } from "./core/running.ts";
@@ -179,7 +179,7 @@ function removePathLine(file: string): void {
 }
 
 /** What Kiko's folder in ~/.local/share holds of Pocket's, said beside it in the list of what goes ("" when nothing). */
-export function pocketWords(venv = POCKET_VENV): string {
+export function pocketWords(venv = POCKET_SHARED_VENV): string {
   const parts = [existsSync(venv) ? "Python" : "", existsSync(pocketUvHome(venv)) ? "uv" : "", existsSync(pocketHfHome(venv)) ? "model" : ""].filter(Boolean);
   if (!parts.length) return "";
   const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;

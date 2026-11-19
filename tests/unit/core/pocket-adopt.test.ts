@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { describe, test } from "node:test";
 import { pocketPrepState, startPocketPrep } from "../../../src/core/pocket-prep.ts";
-import { adoptSharedModel, otherFlavourHub, pocketHfEnv, pocketModelSources, sharedHfHubs } from "../../../src/core/pocket-tts.ts";
+import { adoptSharedModel, devCheckout, legacyHubs, otherFlavourHub, pocketHfEnv, pocketModelSources, sharedHfHubs } from "../../../src/core/pocket-tts.ts";
 import { checkWaits } from "../../support/until.ts";
 
 const VOICE = "models--kyutai--pocket-tts";
@@ -112,20 +112,23 @@ describe("where Pocket's model may be already: a fixed list of exact folders, ne
   const home = "/Users/someone";
   const none = {} as NodeJS.ProcessEnv;
 
-  test("Hugging Face's own order (HF_HUB_CACHE, the older HUGGINGFACE_HUB_CACHE, HF_HOME/hub, XDG_CACHE_HOME, ~/.cache), then the other flavour's", () => {
+  const root = "/Users/someone/code/kiko";
+
+  test("Hugging Face's own order (HF_HUB_CACHE, the older HUGGINGFACE_HUB_CACHE, HF_HOME/hub, XDG_CACHE_HOME, ~/.cache), then the release's, then the checkout's own from before it was shared", () => {
     const env = { HF_HUB_CACHE: "/hf/hub-cache", HUGGINGFACE_HUB_CACHE: "/hf/old", HF_HOME: "/hf/home", XDG_CACHE_HOME: "/xdg" } as NodeJS.ProcessEnv;
-    assert.deepEqual(pocketModelSources(env, home, false), [
+    assert.deepEqual(pocketModelSources(env, home, false, root), [
       "/hf/hub-cache",
       "/hf/old",
       "/hf/home/hub",
       "/xdg/huggingface/hub",
       "/Users/someone/.cache/huggingface/hub",
       "/Users/someone/.local/share/kiko/pocket-hf/hub",
+      "/Users/someone/code/kiko/pocket/pocket-hf/hub",
     ]);
     assert.deepEqual(
-      pocketModelSources(none, home, false),
-      ["/Users/someone/.cache/huggingface/hub", "/Users/someone/.local/share/kiko/pocket-hf/hub"],
-      "nothing set: the default, then the release's",
+      pocketModelSources(none, home, false, root),
+      ["/Users/someone/.cache/huggingface/hub", "/Users/someone/.local/share/kiko/pocket-hf/hub", "/Users/someone/code/kiko/pocket/pocket-hf/hub"],
+      "nothing set: the default, then the release's, then this checkout's pocket/pocket-hf",
     );
   });
 
@@ -134,18 +137,34 @@ describe("where Pocket's model may be already: a fixed list of exact folders, ne
     assert.deepEqual(sharedHfHubs(env, home), ["/Users/someone/.cache/huggingface/hub"]);
   });
 
-  test("the release looks in the Kiko Dev checkout ~/.local/bin/kiko-dev links to; with no link, only the shared caches", () => {
+  test("the release looks in Kiko Dev's shared folder, and the checkout ~/.local/bin/kiko-dev links to; never in a folder of its own install's", () => {
     const dir = tempDir();
     const checkout = join(dir, "git", "kiko");
     mkdirSync(join(checkout, "bin"), { recursive: true });
     writeFileSync(join(checkout, "bin", "kiko-dev"), "");
     const fakeHome = join(dir, "home");
-    assert.equal(otherFlavourHub(fakeHome, true), undefined, "no link");
-    assert.deepEqual(pocketModelSources(none, fakeHome, true), [join(fakeHome, ".cache", "huggingface", "hub")]);
+    const devShared = join(fakeHome, ".local", "share", "kiko-dev", "pocket-hf", "hub");
+    assert.equal(devCheckout(fakeHome), undefined, "no link");
+    assert.equal(otherFlavourHub(fakeHome, true), devShared);
+    assert.deepEqual(pocketModelSources(none, fakeHome, true, "/not/used"), [join(fakeHome, ".cache", "huggingface", "hub"), devShared]);
     mkdirSync(join(fakeHome, ".local", "bin"), { recursive: true });
     symlinkSync(join(checkout, "bin", "kiko-dev"), join(fakeHome, ".local", "bin", "kiko-dev"));
-    assert.equal(otherFlavourHub(fakeHome, true), join(checkout, "pocket", "pocket-hf", "hub"));
+    assert.equal(devCheckout(fakeHome), checkout);
+    assert.deepEqual(legacyHubs(fakeHome, true, "/not/used"), [join(checkout, "pocket", "pocket-hf", "hub")]);
+    assert.deepEqual(pocketModelSources(none, fakeHome, true, "/not/used"), [join(fakeHome, ".cache", "huggingface", "hub"), devShared, join(checkout, "pocket", "pocket-hf", "hub")]);
     assert.equal(otherFlavourHub(fakeHome, false), join(fakeHome, ".local", "share", "kiko", "pocket-hf", "hub"), "a checkout: the release's");
+  });
+
+  test("a git worktree: its own pocket/pocket-hf, then its main checkout's (where Kiko Dev kept the model before it was shared)", () => {
+    const dir = tempDir();
+    const main = join(dir, "git", "kiko");
+    const tree = join(dir, "git", "kiko-branch");
+    mkdirSync(join(main, ".git", "worktrees", "kiko-branch"), { recursive: true });
+    mkdirSync(tree, { recursive: true });
+    writeFileSync(join(tree, ".git"), `gitdir: ${join(main, ".git", "worktrees", "kiko-branch")}\n`);
+    const fakeHome = join(dir, "home");
+    assert.deepEqual(legacyHubs(fakeHome, false, tree), [join(tree, "pocket", "pocket-hf", "hub"), join(main, "pocket", "pocket-hf", "hub")]);
+    assert.deepEqual(legacyHubs(fakeHome, false, main), [join(main, "pocket", "pocket-hf", "hub")], "the main checkout: only its own");
   });
 
   test("KIKO_POCKET_MODEL_FROM (the tests'): exactly those, nothing else", () => {
