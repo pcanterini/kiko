@@ -3,4 +3,15 @@
 # own settings folder, socket, tmux server and keys, so it never meets an installed Kiko). The same
 # as bin/kiko here; run by the Node on PATH (24+). On PATH: `pnpm link:dev` links it into ~/.local/bin.
 self=$(realpath "$0" 2>/dev/null || echo "$0")
-exec node "$(dirname "$self")/../src/cli.ts" "$@"
+root=$(cd "$(dirname "$self")/.." && pwd)
+# A fresh clone: its packages aren't installed yet. Install them (the lockfile's, exactly), then go
+# on; a first run then goes through setup as an installed Kiko's does.
+if [ ! -d "$root/node_modules" ]; then
+  if ! command -v pnpm >/dev/null 2>&1; then
+    echo "Kiko needs pnpm to install its packages: corepack enable pnpm (or brew install pnpm), then run this again." >&2
+    exit 1
+  fi
+  echo "Installing Kiko's packages in $root (pnpm install), once..." >&2
+  (cd "$root" && pnpm install --frozen-lockfile) >&2 || { echo "pnpm install failed: see above." >&2; exit 1; }
+fi
+exec node "$root/src/cli.ts" "$@"

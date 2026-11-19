@@ -606,7 +606,9 @@ function runCommand(parsed: Extract<ReturnType<typeof parseCli>, { kind: "run" }
   const answers = settings.keyClashAnswers;
   clashAnswers = answers && typeof answers === "object" && !Array.isArray(answers) ? answers : {};
   const { command, args } = parsed;
-  if (command === undefined) void run(window());
+  // A first run (no settings yet, e.g. a fresh install or a new clone): setup first, which ends by
+  // opening the window, as install.sh's `kiko setup` does.
+  if (command === undefined) void run(!settingsExist() && process.stdin.isTTY ? onboarding(false) : window());
   else if (command === "claude") void run(claude(args));
   else if (command === "codex") void run(codex(args));
   else if (command === "opencode") void run(opencode(args));
