@@ -21,14 +21,14 @@ import "./app/splash-guard.ts";
 import { rmSync } from "node:fs";
 import { dirname } from "node:path";
 import { createInterface } from "node:readline";
-import { config, enginesFor, keyFallbacks, keys as keyFill, noModelKey } from "./core/config.ts";
+import { config, enginesFor, keyFallbacks, keys as keyFill, noModelKey, pocketWanted } from "./core/config.ts";
 import { fallbackLine, keysInUse, NO_MODEL_KEY, without } from "./core/keys.ts";
 import { crashCatcher } from "./core/crash.ts";
 import { keyStore } from "./platform/keys.ts";
 import { noLinkAfter } from "./core/mic-device.ts";
-import { pocketNote, pocketPrepState } from "./core/pocket-prep.ts";
+import { pocketMissingLine, pocketNote, pocketPrepState, prepWhy, startPocketPrep } from "./core/pocket-prep.ts";
 import { acceptedNow, TERMS_DATE, termsNotice } from "./core/terms.ts";
-import { PocketTts } from "./core/pocket-tts.ts";
+import { PocketTts, pocketInstalled } from "./core/pocket-tts.ts";
 import { findSession, listedId, sessionName } from "./core/sessions.ts";
 import { classifierEnabled } from "./core/classifier.ts";
 import { voiceAllows } from "./core/routing-rules.ts";
@@ -91,6 +91,7 @@ import {
   audio,
   cartesia,
   connectCartesia,
+  connectPocket,
   connectStt,
   dim,
   duck,
@@ -110,6 +111,7 @@ import {
   keptWords,
 } from "./app/state.ts";
 import { watchPocket } from "./app/pocket-switch.ts";
+import { startParts } from "./app/start-parts.ts";
 import { keyOffers } from "./app/key-offer.ts";
 import { keyDown, keyUp, micLive, phoneListeners, setListening } from "./app/talk.ts";
 
@@ -466,6 +468,20 @@ async function main() {
     ui.info(`(${termsSaid.line})`);
     rememberSettings({ termsAccepted: acceptedNow() });
   }
+  // Pocket the voice (chosen, or the free one with nothing chosen) but not installed in this copy: a
+  // new clone or install, whose venv is its own while the settings are shared with the other copies
+  // of this flavour, so setup (and its pocketSetup "noted") was another copy's. The macOS voice
+  // speaks (keys.ts pickEngines), Pocket's download starts here as setup starts it (pocket-prep.ts),
+  // said once, and the app switches when it's ready (the watch below). Running already (setup's, or
+  // a run before this one): nothing more, nothing said.
+  if (config.tts === "say" && !pocketInstalled() && pocketWanted()) {
+    const before = pocketPrepState();
+    const why = before === "failed" ? prepWhy() : "";
+    const did = before === "running" ? "running" : startPocketPrep();
+    log("pocket_prep", { did, by: "app", before });
+    if (did === "started") ui.info(`(${pocketMissingLine(before, why)})`);
+    if (did === "no-setup") ui.info("(Pocket, the free voice, isn't installed in this copy and can't be set up here (no pocket/setup.sh), so the macOS voice speaks. Settings → Voice changes it.)");
+  }
   // Pocket, downloaded in the background by first-run setup: ready and speaking now, or failed, said once.
   const pocketSaid = pocketNote(loadSettings().pocketSetup, config.tts, pocketPrepState());
   if (pocketSaid) {
@@ -515,7 +531,28 @@ async function main() {
   // The dictionary's words and the app's own go with the first connection; session names follow.
   refreshHints([]);
   step(STEPS.voice);
-  await Promise.all([mic.start(), speaker.start(), connectStt(), connectCartesia(), pocket?.connect()]);
+  // Each on its own: one that doesn't start is said, with what to do, and the rest go on (app/start-parts.ts).
+  const hadPocket = Boolean(pocket);
+  await startParts(
+    [
+      {
+        name: "mic",
+        start: () => mic.start(),
+        failed: (why) => ui.error("mic", `The microphone couldn't start (${why}), so talking on this Mac doesn't work this run (a paired phone's mic still does). Restart ${TITLE} to try again.`),
+      },
+      {
+        name: "speaker",
+        start: () => speaker.start(),
+        failed: (why) => ui.error("speaker", `The sound player couldn't start (${why}), so replies and beeps may not play on this Mac this run. Restart ${TITLE} to try again.`),
+      },
+      { name: "stt", start: connectStt, failed: () => {} },
+      { name: "cartesia", start: connectCartesia, failed: () => {} },
+      { name: "pocket", start: connectPocket, failed: () => {} },
+    ],
+    { log, fatal: (err) => err instanceof HelperBuildError },
+  );
+  // Pocket didn't start (connectPocket): the macOS voice's name on the header.
+  if (hadPocket && !pocket) ui.set({ about: { voice: voiceName(), model: modelName(), hotkey: config.hotkey, pttMode: config.pttMode, classifier: classifierEnabled() } });
   refreshMic();
   log("mic", { ...micFields(micInUse()), devices: mic.devices.length });
   upgradeAgentHooks();

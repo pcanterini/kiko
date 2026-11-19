@@ -154,7 +154,9 @@ export type Fallback = { setting: "tts" | "stt" | "llm"; chosen: string; using: 
  * Deepgram → Apple, Haiku on Anthropic → Haiku through OpenRouter, an OpenRouter model → Haiku on
  * Anthropic. Nothing chosen: the paid one when its key is there (as before keys were optional), else
  * the one-key setup (Pocket, Apple, Haiku through OpenRouter), with nothing to say. `llm` is null
- * with no model key at all (neither OpenRouter nor Anthropic).
+ * with no model key at all (neither OpenRouter nor Anthropic). Pocket chosen but not installed here
+ * (`pocket` false: a new clone or install, whose venv is its own while the settings are shared): the
+ * macOS voice, with no Fallback (no key is missing; app.ts starts Pocket's download and says so).
  */
 export function pickEngines(chosen: Partial<Chosen>, env: NodeJS.ProcessEnv, pocket: boolean, account = false): { tts: string; stt: string; llm: string | null; fallbacks: Fallback[] } {
   const has = (id: KeyId) => isSet(env[KEYS.find((k) => k.id === id)!.env]) || (id === "openrouter" && account);
@@ -162,6 +164,7 @@ export function pickEngines(chosen: Partial<Chosen>, env: NodeJS.ProcessEnv, poc
   const freeVoice = pocket ? "pocket" : "say";
   let tts = chosen.tts ?? (has("cartesia") ? "cartesia" : freeVoice);
   if (tts === "cartesia" && !has("cartesia")) fallbacks.push({ setting: "tts", chosen: tts, using: (tts = freeVoice), key: "cartesia" });
+  if (tts === "pocket" && !pocket) tts = "say";
   let stt = chosen.stt ?? (has("deepgram") ? "deepgram" : "apple");
   if (stt === "deepgram" && !has("deepgram")) fallbacks.push({ setting: "stt", chosen: stt, using: (stt = "apple"), key: "deepgram" });
   let llm: string | null = chosen.llm ?? (has("anthropic") ? "haiku" : OPENROUTER_HAIKU);

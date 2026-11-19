@@ -185,6 +185,13 @@ describe("what runs, by the keys there are", () => {
     assert.deepEqual(pickEngines({}, only("anthropic"), true).llm, "haiku");
   });
 
+  test("Pocket chosen but not installed in this copy (a new clone, the settings shared): the macOS voice, nothing to say for a key", () => {
+    assert.deepEqual(pickEngines({ tts: "pocket" }, only("openrouter"), false), { tts: "say", stt: "apple", llm: OPENROUTER_HAIKU, fallbacks: [] });
+    assert.equal(pickEngines({ tts: "pocket" }, only("openrouter"), true).tts, "pocket", "installed: Pocket");
+    // Cartesia chosen with no key and no Pocket here: the macOS voice stands in, said as before.
+    assert.deepEqual(pickEngines({ tts: "cartesia" }, only("openrouter"), false).fallbacks, [{ setting: "tts", chosen: "cartesia", using: "say", key: "cartesia" }]);
+  });
+
   test("chosen with its key: runs as chosen", () => {
     assert.deepEqual(pickEngines({ tts: "say", stt: "apple", llm: "deepseek/deepseek-v4.1-flash" }, all, true), { tts: "say", stt: "apple", llm: "deepseek/deepseek-v4.1-flash", fallbacks: [] });
   });

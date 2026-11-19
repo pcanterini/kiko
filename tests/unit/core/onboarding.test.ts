@@ -29,7 +29,7 @@ import {
   withoutDone,
   type SetupFacts,
 } from "../../../src/core/onboarding.ts";
-import { PREP_BYTES, prepBytes, prepFraction, PrepProgress, prepPhase, prepWatcher, prepWhy, pocketNote, pocketPrepState, startPocketPrep } from "../../../src/core/pocket-prep.ts";
+import { PREP_BYTES, prepBytes, prepFraction, PrepProgress, prepPhase, prepWatcher, prepWhy, pocketMissingLine, pocketNote, pocketPrepState, startPocketPrep } from "../../../src/core/pocket-prep.ts";
 import { pocketInstalled, pocketPreparing, prepFile } from "../../../src/core/pocket-tts.ts";
 import { parsePermissions } from "../../../src/platform/macos/permissions.ts";
 import { checkWaits } from "../../support/until.ts";
@@ -393,6 +393,15 @@ describe("Pocket's background download", () => {
     assert.equal(pocketNote("started", "say", "running"), null);
     assert.equal(pocketNote("noted", "pocket", "ready"), null);
     assert.equal(pocketNote(undefined, "pocket", "ready"), null);
+  });
+
+  test("Pocket the voice but not installed in this copy: said once as its download starts, the macOS voice meanwhile", () => {
+    assert.equal(pocketMissingLine("none"), "Setting up Pocket, the free voice, for this copy of Kiko: the macOS voice speaks until it's ready. Settings → Voice changes it.");
+    assert.equal(
+      pocketMissingLine("failed", "Pocket TTS: couldn't download uv (offline?)"),
+      "Setting up Pocket, the free voice, for this copy of Kiko: the macOS voice speaks until it's ready. It didn't finish last time (Pocket TTS: couldn't download uv (offline?)), so it's trying again. Settings → Voice changes it.",
+    );
+    assert.doesNotMatch(pocketMissingLine("failed"), /\(\)/, "no log line: no empty brackets");
   });
 });
 

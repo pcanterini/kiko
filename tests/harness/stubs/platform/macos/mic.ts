@@ -89,8 +89,9 @@ export class Mic {
       this.onHoldLost({ what, uid: this.hold.uid, name: this.hold.name, wasLive, ...more });
     };
   }
+  // HARNESS_MIC_FAILS (test-start.ts's run): the helper exits before it's ready, as the real one's start rejects then.
   start() {
-    return Promise.resolve();
+    return process.env.HARNESS_MIC_FAILS ? Promise.reject(new Error("mic helper exited (1)")) : Promise.resolve();
   }
   setDevice(choice: MicChoice) {
     T.micChoice = choice;

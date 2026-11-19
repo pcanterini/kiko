@@ -40,7 +40,7 @@ import { windowClosedNote } from "../core/reach.ts";
 import { Timeline, type Entry } from "../core/timeline.ts";
 import type { PressAudio } from "../core/press-audio.ts";
 import { SETTINGS_FILE } from "../core/settings.ts";
-import { envVar, STATE_PATH } from "../core/name.ts";
+import { envVar, STATE_PATH, TITLE } from "../core/name.ts";
 import { agentOf } from "../agents/index.ts";
 import type { Held } from "../agents/types.ts";
 import { platform } from "../platform/index.ts";
@@ -240,6 +240,18 @@ export function usePocket(engine: PocketTts) {
   pocket = engine;
   config.tts = "pocket";
 }
+// Pocket's server not starting at the start (a venv that's broken, a port taken, too slow to load):
+// said, and the macOS voice speaks this run, rather than the app stopping. One not installed here
+// never gets this far (keys.ts pickEngines: the macOS voice, and app.ts starts its download).
+export const connectPocket = () =>
+  pocket?.connect().catch((err) => {
+    const why = err instanceof Error ? err.message : String(err);
+    log("error", { where: "tts_connect", tts: "pocket", message: why });
+    pocket?.close();
+    pocket = null;
+    config.tts = "say";
+    ui.error("voice", `Pocket couldn't start (${why}), so the macOS voice speaks this run. Settings → Voice changes it; restarting ${TITLE} tries Pocket again.`);
+  });
 // The Mac's player, or with Play on this Mac off a clock that plays nothing in its time (mac-output.ts).
 // A voice sample you asked for in the settings screen plays here either way. Off with no phone to
 // play it (none connected with Play on phone on, or its app in the background or locked), the Mac

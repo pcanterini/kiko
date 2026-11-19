@@ -73,9 +73,10 @@ export const ENV_FILE = INSTALLED || FLAVOUR === "release" ? null : (envVar("ENV
 /**
  * Pocket TTS's Python: pocket/.venv in a checkout; for an installed copy, outside the version
  * folders, so an update keeps it. Beside it, Pocket's own uv (pocket-uv/, when setup.sh had to fetch
- * one) and model (pocket-hf/): core/pocket-tts.ts.
+ * one) and model (pocket-hf/): core/pocket-tts.ts. KIKO_POCKET_VENV puts it elsewhere (the app
+ * harness's start with no Pocket: tests/harness/test-start.ts).
  */
-export const POCKET_VENV = INSTALLED ? join(SHARE_DIR, "pocket-venv") : join(APP_ROOT, "pocket", ".venv");
+export const POCKET_VENV = envVar("POCKET_VENV") || (INSTALLED ? join(SHARE_DIR, "pocket-venv") : join(APP_ROOT, "pocket", ".venv"));
 /** Pocket TTS's server log. */
 export const POCKET_LOG = INSTALLED ? join(STATE_DIR, "pocket-server.log") : join(APP_ROOT, "pocket", "server.log");
 

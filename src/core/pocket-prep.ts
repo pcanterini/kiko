@@ -208,3 +208,14 @@ export function pocketNote(flag: unknown, tts: string, state: PrepState, venv = 
   if (state === "failed") return `Pocket, the free voice, couldn't be set up (what happened: ${prepFile(venv, "log")}). The macOS voice speaks meanwhile.`;
   return null;
 }
+
+/**
+ * The line said at the app's start when Pocket is the voice but isn't installed in this copy (a new
+ * clone or install: the settings are shared, the venv is the copy's own), and its download was just
+ * started (`before`: where it stood; "failed": it was tried before here, and `why` is the last line
+ * its log had). The macOS voice speaks until it's ready, then the app switches (app/pocket-switch.ts).
+ */
+export function pocketMissingLine(before: PrepState, why = ""): string {
+  const again = before === "failed" ? ` It didn't finish last time${why ? ` (${why})` : ""}, so it's trying again.` : "";
+  return `Setting up Pocket, the free voice, for this copy of ${NAME}: the macOS voice speaks until it's ready.${again} Settings → Voice changes it.`;
+}

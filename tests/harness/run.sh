@@ -39,7 +39,22 @@ for p in claude rex tmux osascript security open codex opencode t3 pbcopy pbpast
   printf '#!/bin/sh\necho %s >> "%s/refused"\nexit 127\n' "$p" "$OUT" > "$OUT/refused-bin/$p"
   chmod +x "$OUT/refused-bin/$p"
 done
-env -i PATH="$OUT/refused-bin:$PATH" HOME="$OUT/home" USER="${USER:-}" LOGNAME="${LOGNAME:-}" LANG="${LANG:-en_US.UTF-8}" TMPDIR="${TMPDIR:-/tmp}" SHELL=/bin/zsh \
-  KIKO_REX_SOCKET="$OUT/no-rex/server.sock" KIKO_REX_BIN="$OUT/no-rex/rex" KIKO_CLAUDE_JOBS="$OUT/claude-jobs" KIKO_CLAUDE_TASKS="$OUT/claude-tasks" KIKO_CLAUDE_SESSIONS="$OUT/claude-sessions" KIKO_SIGN_IDENTITY=- KIKO_TMUX_BIN="$OUT/refused-bin/tmux" KIKO_TMUX_SERVER=kiko-harness KIKO_UPDATES=off \
-  KIKO_ACCOUNT_URL=http://127.0.0.1:1 KIKO_PRO=0 KIKO_RELAY_URL=off KIKO_KEYCHAIN=off KIKO_HELPER_APP=off KIKO_ENV_FILE= KIKO_TEST_TAIL_MS=0 KIKO_TEST_HOLD_MS=100 KIKO_TEST_HOLD_ANSWER_MS=1000 KIKO_TTS=say KIKO_STT=apple KIKO_LLM=haiku ANTHROPIC_API_KEY=test-not-real KIKO_PTT_MODE=hold KIKO_ANNOUNCE=all KIKO_REPLY_WINDOW_MS=1500 KIKO_FYI_REPLY_WINDOW_MS=600 KIKO_TEST_GIVE_WAY_MS=200 KIKO_TEST_UNHEARD_MS=150 KIKO_PERMISSION_WINDOW_MS=1000 KIKO_TEST_STAND=off KIKO_TEST_LISTEN_SILENCE_MS=200 KIKO_TEST_LISTEN_NAME_WAIT_MS=500 KIKO_TEST_MIC_TEST_MS=300 KIKO_VOICE_PERMISSIONS=true KIKO_SOUNDS=true KIKO_CLASSIFIER_MIN_CONFIDENCE=0.75 KIKO_SETTINGS="$OUT/settings-test.json" KIKO_STATE="$OUT/state.json" KIKO_SOCKET="$OUT/voice.sock" KIKO_LOG_DIR="${HARNESS_LOG_DIR:-$OUT/logs}" KIKO_APP_FOLDER=claude-code-speech KIKO_PROJECTS_ROOT="$OUT/projects-root" KIKO_SCRATCH_FOLDER="$OUT/scratch" KIKO_STARTING_WAIT_MS=600000 KIKO_CLAUDE_CONFIG="$OUT/claude.json" KIKO_CLAUDE_SETTINGS="$OUT/claude-home/settings.json" KIKO_CLAUDE_PROJECTS="$OUT/claude-projects" KIKO_PHONE_PORT=0 KIKO_PHONE_HOST=127.0.0.1 KIKO_T3_HOME="$OUT/t3home" KIKO_T3_PORT=1 CODEX_HOME="$OUT/codex-home" KIKO_CODEX_SESSIONS="$OUT/codex-sessions" KIKO_OPENCODE_SERVICE="$OUT/opencode-state/service.json" KIKO_OPENCODE_STATE="$OUT/opencode-state" \
-  node --no-warnings --import "$HERE/register.mjs" "$HERE/test-app.ts" --plain 2>&1 | grep -v "^\s*$"
+# One run of the app on its stubs: `entry` (test-app.ts, test-start.ts) in `dir`, the run's own folder, with the
+# environment below; VAR=value after them overrides it.
+run_app() {
+  local dir="$1" entry="$2" logs
+  shift 2
+  mkdir -p "$dir/home"
+  cd "$dir" || return 1
+  # HARNESS_LOG_DIR: the main run's logs there, another run's in a folder of its own in it.
+  logs="${HARNESS_LOG_DIR:-$dir/logs}"
+  if [ -n "${HARNESS_LOG_DIR:-}" ] && [ "$dir" != "$OUT" ]; then logs="$HARNESS_LOG_DIR/$(basename "$dir")"; fi
+  env -i PATH="$OUT/refused-bin:$PATH" HOME="$dir/home" USER="${USER:-}" LOGNAME="${LOGNAME:-}" LANG="${LANG:-en_US.UTF-8}" TMPDIR="${TMPDIR:-/tmp}" SHELL=/bin/zsh \
+    KIKO_REX_SOCKET="$dir/no-rex/server.sock" KIKO_REX_BIN="$dir/no-rex/rex" KIKO_CLAUDE_JOBS="$dir/claude-jobs" KIKO_CLAUDE_TASKS="$dir/claude-tasks" KIKO_CLAUDE_SESSIONS="$dir/claude-sessions" KIKO_SIGN_IDENTITY=- KIKO_TMUX_BIN="$OUT/refused-bin/tmux" KIKO_TMUX_SERVER=kiko-harness KIKO_UPDATES=off \
+    KIKO_ACCOUNT_URL=http://127.0.0.1:1 KIKO_PRO=0 KIKO_RELAY_URL=off KIKO_KEYCHAIN=off KIKO_HELPER_APP=off KIKO_ENV_FILE= KIKO_TEST_TAIL_MS=0 KIKO_TEST_HOLD_MS=100 KIKO_TEST_HOLD_ANSWER_MS=1000 KIKO_TTS=say KIKO_STT=apple KIKO_LLM=haiku ANTHROPIC_API_KEY=test-not-real KIKO_PTT_MODE=hold KIKO_ANNOUNCE=all KIKO_REPLY_WINDOW_MS=1500 KIKO_FYI_REPLY_WINDOW_MS=600 KIKO_TEST_GIVE_WAY_MS=200 KIKO_TEST_UNHEARD_MS=150 KIKO_PERMISSION_WINDOW_MS=1000 KIKO_TEST_STAND=off KIKO_TEST_LISTEN_SILENCE_MS=200 KIKO_TEST_LISTEN_NAME_WAIT_MS=500 KIKO_TEST_MIC_TEST_MS=300 KIKO_VOICE_PERMISSIONS=true KIKO_SOUNDS=true KIKO_CLASSIFIER_MIN_CONFIDENCE=0.75 KIKO_SETTINGS="$dir/settings-test.json" KIKO_STATE="$dir/state.json" KIKO_SOCKET="$dir/voice.sock" KIKO_LOG_DIR="$logs" KIKO_APP_FOLDER=claude-code-speech KIKO_PROJECTS_ROOT="$dir/projects-root" KIKO_SCRATCH_FOLDER="$dir/scratch" KIKO_STARTING_WAIT_MS=600000 KIKO_CLAUDE_CONFIG="$dir/claude.json" KIKO_CLAUDE_SETTINGS="$dir/claude-home/settings.json" KIKO_CLAUDE_PROJECTS="$dir/claude-projects" KIKO_PHONE_PORT=0 KIKO_PHONE_HOST=127.0.0.1 KIKO_T3_HOME="$dir/t3home" KIKO_T3_PORT=1 CODEX_HOME="$dir/codex-home" KIKO_CODEX_SESSIONS="$dir/codex-sessions" KIKO_OPENCODE_SERVICE="$dir/opencode-state/service.json" KIKO_OPENCODE_STATE="$dir/opencode-state" \
+      "$@" node --no-warnings --import "$HERE/register.mjs" "$HERE/$entry" --plain 2>&1 | grep -v "^\s*$"
+}
+run_app "$OUT" test-app.ts || exit 1
+# A start of its own, on files of its own (out/start/): Pocket chosen but not installed in this copy, and the mic's
+# helper failing to start (test-start.ts). The stand-in for pocket/setup.sh is written there by test-start.ts.
+run_app "$OUT/start" test-start.ts KIKO_TTS=pocket KIKO_POCKET_VENV="$OUT/start/no-pocket/.venv" KIKO_POCKET_SETUP="$OUT/start/fake-pocket-setup.sh" HARNESS_MIC_FAILS=1
