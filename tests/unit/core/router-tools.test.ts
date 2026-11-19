@@ -190,6 +190,15 @@ describe("tool calls → actions", () => {
     }
     assert.deepEqual((await route("messages", [{ name: "offer_session", arguments: { session: "s9" } }])).result.actions, [], "an unknown handle is dropped");
   });
+  // A question about building something like a product being talked about, naming no session, got
+  // "<the product> isn't one of your sessions", and the yes to the offer after it reached the session
+  // by itself (tests/unit/core/offer-yes.test.ts).
+  test("a yes to the app's offer picks; a product the words only talk about is no session's name", async () => {
+    const { sent } = await route("messages");
+    assert.match(sent.system, /or offered to pass them on, <asked_where> has those words/);
+    assert.match(sent.system, /or says yes to the offer \(with or without the session's name\), call pass_on with it, and the app sends those words there, never the answer/);
+    assert.match(sent.system, /A product, company or tool the words only talk about .* is what they're about, not who they're for: never say it isn't one of their sessions\./);
+  });
   test("an unknown handle is dropped", async () => {
     const { result } = await route("messages", [{ name: "pass_on", arguments: { session: "s9" } }]);
     assert.deepEqual(result.actions, []);

@@ -1031,7 +1031,8 @@ async function route(s: DecideState, deps: DecideDeps, out: Decision, appParts: 
     await asksWhere(s, deps, out);
     return;
   }
-  if (calls.some((a) => a.name === "resend_to")) out.correction = true;
+  // Not a correction when it sends on the words the app asked about (resendsAsked): nothing went wrong.
+  if (calls.some((a) => a.name === "resend_to") && !resendsAsked(s)) out.correction = true;
   const acts: Act[] = [];
   if (notFound) acts.push(notFound);
   const one = oneTarget(s, out, calls);
@@ -1170,6 +1171,12 @@ async function guard(s: DecideState, deps: DecideDeps, out: Decision, action: Ro
       return { type: "say", text: line, why: "offer_session" };
     }
     case "resend_to":
+      // Your last words went to the app, and it asked which session they're for or offered to pass
+      // them on ("Want me to ask Rowan?"): "send it to Rowan" sends those words there, never these.
+      if (resendsAsked(s)) {
+        out.question = { kind: "answered", sessionId: action.session.sessionId, how: "router" };
+        return unsure(s, { type: "send", session: { sessionId: action.session.sessionId, cwd: action.session.cwd }, text: s.question!.text }, "router resend_to");
+      }
       // Back to the one session they went to ("That was too rowing, not to Kiko." as resend_to Kiko
       // project): never as is. Another session your words name, or sound
       // like, is where they go; with none, resend asks which.
@@ -1807,6 +1814,8 @@ function pickIn(s: DecideState, q: Question, said: string): Pick | null {
   let end = 0;
   for (const { word, end: at } of tokens) {
     if (sets.length && CONNECTOR.test(word)) break;
+    // "Yes, and it's to Rowan.": an "and" before the pick only carries it.
+    if (!sets.length && word === "and") continue;
     // "Number two": the number picks.
     if (isPickWord(word) || word === "number") continue;
     const place = ORDINALS[word];
@@ -1877,6 +1886,15 @@ function pickIn(s: DecideState, q: Question, said: string): Pick | null {
 }
 
 /**
+ * The router's resend_to answers the app's "which session?" question or offer: your last words went
+ * to the app, not a session, and they're the ones it asked about (<asked_where>), so they're what
+ * goes. (One you'd moved on from never reaches the router: decide() lets it go first.)
+ */
+function resendsAsked(s: DecideState): boolean {
+  return Boolean(s.question && !s.question.told);
+}
+
+/**
  * Whether your words do no more than pick `picked` (its name or title, a name it comes close to, its
  * place, "not Lacy, the other one", fillers, "yes"), for the router's pass_on while a question waits: it sends the words asked
  * about then, never these. Not a plain "no".
@@ -1892,6 +1910,9 @@ function onlyPicks(s: DecideState, q: Question, picked: Session): boolean {
       word === "number" ||
       SESSION_WORDS.has(word) ||
       ROUTER_PICK_WORDS.has(word) ||
+      // "Yes, and it's to Rowan.", "pass it along to Rowan": a yes to the app's offer, and how it's said.
+      OFFER_YES.has(word) ||
+      OFFER_FILLER.has(word) ||
       ORDINALS[word] !== undefined ||
       Boolean(byNumber(offered, word)) ||
       title.includes(heard) ||
@@ -2013,7 +2034,11 @@ async function asksWhere(s: DecideState, deps: DecideDeps, out: Decision) {
         if (full.every((w, k) => said[i + k] === w) && (sessionNumber(x) > 0 || !/^\d/.test(said[i + full.length] ?? ""))) return i;
       }
     }
-    const names = nameWords(x);
+    // Not by a word any session could be called ("I can't tell which project you mean" names no
+    // "Kiko project"): only by one of its own, unless its name has none.
+    const all = nameWords(x);
+    const own = all.filter((w) => !SESSION_WORDS.has(w));
+    const names = own.length ? own : all;
     const i = said.findIndex((w) => names.includes(w));
     return i < 0 ? Infinity : i;
   };

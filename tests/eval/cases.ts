@@ -2048,6 +2048,153 @@ CASES.push(
   },
 );
 
+// ── A yes to the app's own offer; a product the words only talk about ─────────────────────────────
+// Made up, from an incident (2026-11-19): right after a restart, a question about building something
+// like a product being talked about ("Vantage", no session) named no session; the router said the
+// product wasn't one of the sessions and offered, in its own words, to ask Rowan, whose last topic it
+// was; the yes to that ("Yes, and it's to Rowan.") was typed into Rowan by itself.
+const VANTAGE_SESSIONS = (): SessionSpec[] => [
+  {
+    name: "kiko",
+    folder: "kiko",
+    given: "Kiko project",
+    title: "Permission prompt wording",
+    status: "idle",
+    activeAgoS: 55,
+    asked: "Which API key does the test clone use, mine or its own?",
+    said: "…It uses its own, from the clone's settings. Pull, then start it again and I'll tell you when it's ready.",
+  },
+  {
+    name: "Rowan",
+    folder: "rowan-platform",
+    given: "Rowan",
+    status: "idle",
+    activeAgoS: 240,
+    asked: "Isn't that already what Rowan is meant to be, with a few more features?",
+    said: "…That also helps the business: every handoff brings someone into Rowan instead of making it an invisible back end. So the platform idea holds, with one honest limit: the private place is the product, and the connector is how other agents reach it without leaking.",
+  },
+  {
+    name: "mintbox",
+    title: "Store screenshot sizes",
+    status: "idle",
+    activeAgoS: 2880,
+    asked: "Which screenshot sizes does the store still need from us?",
+    said: "…Two sizes are left: the large phone and the tablet. The light set is done for both.",
+  },
+];
+const VANTAGE_ASKED = "So if I wanted to build something exactly like Vantage, what would that look like?";
+const VANTAGE_OFFER =
+  "Vantage isn't one of your sessions, so I can't tell which project you mean. Rowan looks like the closest match, since its recent topics are about a private platform for agents. Want me to ask the Rowan session what building something like Vantage would involve?";
+const AFTER_VANTAGE_OFFER = {
+  sessions: VANTAGE_SESSIONS(),
+  recent: [`you → app: ${VANTAGE_ASKED}`, `app said: ${VANTAGE_OFFER}`],
+  lastSent: null,
+  question: { text: VANTAGE_ASKED, offered: ["Rowan"], offer: true },
+};
+const VANTAGE_TO_ROWAN: Match[] = [send("Rowan", { text: /build something exactly like Vantage/i }), { action: "ask", to: "Rowan", text: /Vantage/i }];
+// The yes itself, typed into a session.
+const THE_YES: Match[] = [
+  { action: "send", text: /^\W*(?:yes|yeah|yep|sure|no|rowan)\b/i },
+  { action: "ask", text: /^\W*(?:yes|yeah|yep|sure|no|rowan)\b/i },
+];
+// The router claiming a product the words talk about was meant as a session.
+const NOT_A_SESSION_CLAIM: Match[] = [
+  { action: "say", text: /\b(?:isn'?t|is not|not) (?:one of )?your sessions?\b|\bno session (?:called|named)\b/i },
+  { action: "ask_user", text: /\b(?:isn'?t|is not|not) (?:one of )?your sessions?\b|\bno session (?:called|named)\b/i },
+];
+
+CASES.push(
+  {
+    id: "offer-yes-sends-the-words",
+    tags: ["question", "offer", "synthetic"],
+    why: "Synthetic, from the 2026-11-19 offer incident: 'Yes.' to the app's offer of Rowan sends the words offered there, never the yes.",
+    ...AFTER_VANTAGE_OFFER,
+    say: "Yes.",
+    expect: VANTAGE_TO_ROWAN,
+    mustNot: [...THE_YES, ...reach("kiko"), ...reach("mintbox")],
+  },
+  {
+    id: "offer-yes-and-the-name",
+    tags: ["question", "offer", "synthetic"],
+    why: "Synthetic, from the 2026-11-19 offer incident: 'Yes, and it's to Rowan.' (an 'and' before the name) sends the words offered to Rowan, never the yes.",
+    ...AFTER_VANTAGE_OFFER,
+    say: "Yes, and it's to Rowan.",
+    expect: VANTAGE_TO_ROWAN,
+    mustNot: [...THE_YES, ...reach("kiko"), ...reach("mintbox")],
+  },
+  {
+    id: "offer-bare-name",
+    tags: ["question", "offer", "synthetic"],
+    why: "Synthetic: the session's name alone, answering the app's offer, sends the words offered there.",
+    ...AFTER_VANTAGE_OFFER,
+    say: "Rowan.",
+    expect: VANTAGE_TO_ROWAN,
+    mustNot: [...THE_YES, ...reach("kiko"), ...reach("mintbox")],
+  },
+  {
+    id: "offer-yes-in-other-words",
+    tags: ["question", "offer", "synthetic"],
+    why: "Synthetic: a yes to the offer the code doesn't read (the router's): the words offered go to Rowan, never the yes.",
+    ...AFTER_VANTAGE_OFFER,
+    say: "Yeah, that's the one, go for it.",
+    expect: VANTAGE_TO_ROWAN,
+    mustNot: [{ action: "send", text: /go for it/i }, { action: "ask", text: /go for it/i }, ...reach("kiko"), ...reach("mintbox")],
+  },
+  {
+    id: "offer-no-drops-the-words",
+    tags: ["question", "offer", "synthetic"],
+    why: "Synthetic: 'No.' to the app's offer sends nothing, and says so.",
+    ...AFTER_VANTAGE_OFFER,
+    say: "No.",
+    expect: [{ action: "say", text: /not sent/i }],
+    mustNot: NO_SEND,
+  },
+  {
+    id: "offer-moved-on",
+    tags: ["question", "offer", "synthetic"],
+    why: "Synthetic: new words after the app's offer go where they would have; the words offered don't go.",
+    ...AFTER_VANTAGE_OFFER,
+    say: "Tell mintbox to make the tablet screenshots next.",
+    expect: [send("mintbox", { text: /tablet/i }), { action: "ask", to: "mintbox", text: /tablet/i }],
+    mustNot: [
+      { action: "send", text: /Vantage/i },
+      { action: "ask", text: /Vantage/i },
+    ],
+  },
+  {
+    id: "asked-both-yes-and-the-name",
+    tags: ["question", "synthetic"],
+    why: "Synthetic, from the 2026-11-19 offer incident: the question as the app kept it then (both the Kiko project and Rowan offered, not an offer), and 'Yes, and it's to Rowan.': the words asked about go to Rowan, never the yes.",
+    ...AFTER_VANTAGE_OFFER,
+    question: { text: VANTAGE_ASKED, offered: ["kiko", "Rowan"] },
+    say: "Yes, and it's to Rowan.",
+    expect: VANTAGE_TO_ROWAN,
+    mustNot: [...THE_YES, ...reach("kiko"), ...reach("mintbox")],
+  },
+  {
+    id: "product-name-is-no-session",
+    tags: ["topic", "unnamed", "synthetic"],
+    why: "Synthetic, from the 2026-11-19 offer incident: just restarted, a question naming no session, about building something like a product (no session), carries on Rowan's last topic: Rowan's, or offered; never 'Vantage isn't one of your sessions'.",
+    sessions: VANTAGE_SESSIONS(),
+    recent: [],
+    lastSent: null,
+    say: VANTAGE_ASKED,
+    expect: [...reach("Rowan"), { action: "ask_user", text: /\bRowan\b/ }],
+    mustNot: [...NOT_A_SESSION_CLAIM, ...reach("kiko"), ...reach("mintbox")],
+  },
+  {
+    id: "product-name-is-no-session-shots",
+    tags: ["topic", "unnamed", "synthetic"],
+    why: "Synthetic: a question about how another company's app does something, naming no session, on mintbox's topic (store screenshots): mintbox's, or offered; never that the product isn't a session.",
+    sessions: VANTAGE_SESSIONS(),
+    recent: [],
+    lastSent: null,
+    say: "How does Pebblenote do their store screenshots with the phone frame? Could we make ours look like that?",
+    expect: [...reach("mintbox"), { action: "ask_user", text: /\bmintbox\b/i }],
+    mustNot: [...NOT_A_SESSION_CLAIM, ...reach("kiko"), ...reach("Rowan")],
+  },
+);
+
 // ── The cases made from real speech ──────────────────────────────────────────────────────────
 // The owner's own words from the app's logs are private: tests/eval/private/cases.ts, left out of
 // the public repo (export-ignore). When it's there, its cases run with these.

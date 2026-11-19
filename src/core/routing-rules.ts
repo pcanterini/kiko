@@ -377,8 +377,8 @@ export const HELD_CANCEL =
 export const WHICH_SESSION =
   /\b(?:which|what)\s+(?:session|one|project|claude|terminal|instance|window)s?\b|\bwho(?:['’]s|\s+is|\s+was)?\s+(?:that|this|it)\s+(?:for|meant for)\b|\bwhere\s+(?:should|do|does|would|did)\b|\bshould\s+(?:it|that|this|I\s+send\s+(?:it|that|this))\s+go\b|\bfor\s+which\b/i;
 // The app checking a name it guessed ("Did you mean Lacy?": decide.ts confirm_session, or the
-// router's own words): yes sends the words it was about there, no drops them (decide.ts answerQuestion).
-export const DID_YOU_MEAN = /\b(?:did|do)\s+you\s+mean\b|\bwas\s+(?:that|it|this)\s+(?:for|meant\s+for)\b/i;
+// router's own words, "Is this for Lacy?"): yes sends the words it was about there, no drops them (decide.ts answerQuestion).
+export const DID_YOU_MEAN = /\b(?:did|do)\s+you\s+mean\b|\b(?:is|was)\s+(?:that|it|this)\s+(?:for|meant\s+for)\b/i;
 // The app (or the router in its own words) offering to send your words to a session: "Want me to send
 // that to Bobby?" (decide.ts offer_session), "I can pass your question along to Bobby if you want." A
 // yes sends the words it was about there (decide.ts answerQuestion, Question.offer). The case: the

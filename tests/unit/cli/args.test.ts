@@ -75,6 +75,11 @@ describe("commands", () => {
     assert.ok(!("message" in typo && typo.message.includes("_overlay")));
     assert.ok(!USAGE.includes("_overlay"));
   });
+  test("Kiko Dev's own _glow-demo takes its flags (read by the demo), and isn't in the help", () => {
+    assert.deepEqual(parseCli(["_glow-demo"]), run("_glow-demo"));
+    assert.deepEqual(parseCli(["_glow-demo", "--mic", "--blocks", "--rows", "3"]), run("_glow-demo", ["--mic", "--blocks", "--rows", "3"]));
+    assert.ok(!USAGE.includes("_glow"));
+  });
   test("claude's own flags go to it untouched, kiko's look-alikes too", () => {
     assert.deepEqual(parseCli(["claude", "--resume", "x", "-p"]), run("claude", ["--resume", "x", "-p"]));
     assert.deepEqual(parseCli(["--key", "F12", "claude", "--resume", "x", "-p"]), { ...run("claude", ["--resume", "x", "-p"]), key: "F12" });
