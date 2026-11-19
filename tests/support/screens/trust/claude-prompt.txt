@@ -1,0 +1,10 @@
+ ✻ Welcome to Claude Code!
+
+   /help for help, /status for your current setup
+
+   cwd: /Users/me/Kiko/scratch/2026-10-29-dozer
+
+────────────────────────────────────────────────────────────────────────────────
+❯ Yes, I trust this folder: what does that mean?
+────────────────────────────────────────────────────────────────────────────────
+  ? for shortcuts

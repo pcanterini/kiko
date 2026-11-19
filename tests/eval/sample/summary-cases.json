@@ -1,0 +1,337 @@
+[
+  {
+    "id": "d13c63cfc77f",
+    "at": "2026-01-12T09:14:02.110Z",
+    "name": "pixie",
+    "titled": false,
+    "nameSession": false,
+    "tag": "claude",
+    "context": [
+      "you → pixie: Can you show the login error under the field instead of an alert?"
+    ],
+    "asked": [],
+    "reply": "Done. The login form now shows the error under the field instead of in an alert, and the tests pass (42 of 42).",
+    "needsUser": 0.04,
+    "spokenThen": "In pixie, the login error now shows under the field, and the tests pass.",
+    "firstTokenMsThen": 410,
+    "kinds": [
+      "done"
+    ],
+    "mustKeep": []
+  },
+  {
+    "id": "fa8df23e2a99",
+    "at": "2026-01-12T09:31:47.902Z",
+    "name": "lacy-platform",
+    "titled": false,
+    "nameSession": true,
+    "tag": "claude",
+    "context": [
+      "you → lacy-platform: Run the new migration on staging and tell me how it goes."
+    ],
+    "asked": [],
+    "reply": "The migration ran on staging and every table moved over, but two of the 118 integration tests fail: `orders.export` and `orders.refund`. Both expect the old `amount_cents` column, which the migration renamed to `amount`. I haven't touched production. Should I update the two tests and the export query, or do you want to keep the old column name?",
+    "needsUser": 0.95,
+    "spokenThen": "In lacy-platform, the migration worked on staging, but two order tests fail because the amount column was renamed. Update them, or keep the old name?",
+    "firstTokenMsThen": 520,
+    "kinds": [
+      "failure",
+      "decision"
+    ],
+    "mustKeep": [
+      "failure: 2 of 118 integration tests fail (orders export and refund)",
+      "skipped: production not touched",
+      "needs_you: update the tests and export query, or keep the old column name"
+    ],
+    "topic": "the failing tests",
+    "offTopic": "the billing page"
+  },
+  {
+    "id": "7155feefdf0f",
+    "at": "2026-01-12T10:02:13.455Z",
+    "name": "clipkit",
+    "titled": false,
+    "nameSession": false,
+    "tag": "claude",
+    "context": [
+      "you → clipkit: The Library window keeps jumping in front of everything. Can you look into it?"
+    ],
+    "asked": [],
+    "reply": "I found why the Library window jumps to the front: when a clip finishes uploading, `LibraryController.refresh()` calls `makeKeyAndOrderFront` even when the app is hidden. Changing it to `orderFront` only when the app is active fixes it in a Dev build. Nothing is committed yet. Want me to commit it?",
+    "needsUser": 0.93,
+    "spokenThen": "In clipkit, Claude found the Library window jumps forward after an upload and fixed it in a Dev build. Want it committed?",
+    "firstTokenMsThen": 380,
+    "kinds": [
+      "report",
+      "decision"
+    ],
+    "mustKeep": [
+      "skipped: not committed yet",
+      "needs_you: commit the fix?"
+    ],
+    "topic": "the cause"
+  },
+  {
+    "id": "3bca075387cb",
+    "at": "2026-01-12T10:40:55.006Z",
+    "name": "atlas-agents",
+    "titled": false,
+    "nameSession": false,
+    "tag": "claude",
+    "context": [
+      "you → atlas-agents: I'd like a nightly report of how the agents did. How would you do it?"
+    ],
+    "asked": [],
+    "reply": "Here's the plan for the nightly report:\n1. A scheduled job at 6 AM pulls yesterday's runs from the database.\n2. It groups them by agent and counts failures.\n3. It writes a short summary to the team channel.\n\nThe job runs in the existing worker, so there's nothing new to deploy besides the code. I'd start with step 1 unless you'd rather see a sample report first.",
+    "needsUser": 0.8,
+    "spokenThen": "In atlas agents, Claude plans a 6 AM job that sums up yesterday's runs by agent and posts it to the team channel, in the existing worker. It'll start with pulling the runs unless you want a sample first.",
+    "firstTokenMsThen": 600,
+    "kinds": [
+      "plan",
+      "decision"
+    ],
+    "mustKeep": [
+      "needs_you: start with step 1, or see a sample report first?"
+    ],
+    "topic": "the schedule",
+    "offTopic": "the pricing"
+  },
+  {
+    "id": "040d3a5502d8",
+    "at": "2026-01-12T11:05:20.731Z",
+    "name": "tideline",
+    "titled": false,
+    "nameSession": false,
+    "tag": "codex",
+    "context": [
+      "you → tideline: Fix the build."
+    ],
+    "asked": [],
+    "reply": "The build is green again. The failure came from a lockfile that still pinned `esbuild` 0.24 while the config needed 0.25; I updated the lockfile and CI passed on the second run.",
+    "needsUser": 0.03,
+    "spokenThen": "In tideline, the build is green again: a stale lockfile pinned an old esbuild, and CI passed after updating it.",
+    "firstTokenMsThen": 450,
+    "kinds": [
+      "report"
+    ],
+    "mustKeep": []
+  },
+  {
+    "id": "c5973e27e6cb",
+    "at": "2026-01-12T11:20:09.318Z",
+    "name": "pixie",
+    "titled": false,
+    "nameSession": false,
+    "tag": "claude",
+    "context": [
+      "you → pixie: Does pnpm test run the end-to-end tests too?"
+    ],
+    "asked": [
+      "Does pnpm test run the end-to-end tests too?"
+    ],
+    "reply": "Yes. `pnpm test` runs the unit tests only; the end-to-end ones are `pnpm test:e2e` and need the dev server running on port 5173.",
+    "needsUser": 0.02,
+    "spokenThen": "In pixie, Claude says pnpm test runs only the unit tests; the end-to-end ones need the dev server running.",
+    "firstTokenMsThen": 300,
+    "kinds": [
+      "answer"
+    ],
+    "mustKeep": []
+  },
+  {
+    "id": "c589386d0330",
+    "at": "2026-01-12T12:47:33.580Z",
+    "name": "Lacy",
+    "titled": true,
+    "nameSession": true,
+    "tag": "claude",
+    "context": [],
+    "asked": [],
+    "reply": "I deployed the search fix to production now, since the queue was empty, rather than waiting for the morning window. Searches with accents work again, and the error rate dropped back to normal within five minutes. Rollback is `pnpm deploy:rollback 2026-01-12.3` if anything looks off.",
+    "needsUser": 0.06,
+    "spokenThen": "In Lacy, the search fix is live in production, deployed now instead of in the morning window, and errors are back to normal.",
+    "firstTokenMsThen": 640,
+    "kinds": [
+      "report"
+    ],
+    "mustKeep": [
+      "risk: deployed to production now instead of the morning window"
+    ],
+    "topic": "the rollback"
+  },
+  {
+    "id": "61faf9c16c6a",
+    "at": "2026-01-12T13:15:42.904Z",
+    "name": "clipkit",
+    "titled": false,
+    "nameSession": false,
+    "tag": "claude",
+    "context": [],
+    "asked": [],
+    "reply": "I can't reproduce the crash on macOS 26.1 with the steps from the report. I tried a fresh install, a large library (5,000 clips) and the sandboxed build. My guess is that it needs the iCloud folder, which I can't set up here. Could you ask the reporter whether their library is in iCloud Drive?",
+    "needsUser": 0.9,
+    "spokenThen": "In clipkit, Claude couldn't reproduce the crash and guesses it needs an iCloud library. Could you ask the reporter whether theirs is in iCloud Drive?",
+    "firstTokenMsThen": 500,
+    "kinds": [
+      "failure",
+      "decision"
+    ],
+    "mustKeep": [
+      "failure: couldn't reproduce the crash",
+      "caveat: the iCloud cause is a guess",
+      "needs_you: ask the reporter whether their library is in iCloud Drive"
+    ],
+    "topic": "what it tried"
+  },
+  {
+    "id": "0987c6e50d70",
+    "at": "2026-01-12T14:02:11.217Z",
+    "name": "atlas-agents",
+    "titled": false,
+    "nameSession": false,
+    "tag": "claude",
+    "context": [
+      "you → atlas-agents: Hold the import, I need to check something."
+    ],
+    "asked": [],
+    "reply": "Paused. I stopped the import job after the first 300 of 2,400 records, as you asked, and left the rest untouched. Nothing was deleted. When you want to carry on, say so and it picks up at record 301.",
+    "needsUser": 0.2,
+    "spokenThen": "In atlas agents, the import is paused after 300 of 2,400 records, nothing deleted, and it'll pick up from there when you say.",
+    "firstTokenMsThen": 350,
+    "kinds": [
+      "done"
+    ],
+    "mustKeep": [
+      "skipped: 2,100 records not imported yet"
+    ]
+  },
+  {
+    "id": "1b615e385d02",
+    "at": "2026-01-12T15:30:00.000Z",
+    "name": "hello from t3",
+    "titled": true,
+    "nameSession": false,
+    "tag": "agent",
+    "context": [],
+    "asked": [
+      "What's the capital of Spain?"
+    ],
+    "reply": "The capital of Spain is Madrid.",
+    "needsUser": 0.01,
+    "spokenThen": "In hello from t3, the capital of Spain is Madrid.",
+    "firstTokenMsThen": 280,
+    "kinds": [
+      "answer"
+    ],
+    "mustKeep": []
+  },
+  {
+    "id": "f71bc5799070",
+    "at": "2026-01-12T16:12:54.660Z",
+    "name": "lacy-platform",
+    "titled": false,
+    "nameSession": false,
+    "tag": "claude",
+    "context": [
+      "you → lacy-platform: The dashboard takes ten seconds to load. What can we do?"
+    ],
+    "asked": [],
+    "reply": "Two options for the slow dashboard:\n\n**A. Cache the totals** for five minutes. Small change, the page loads in under a second, but numbers can be five minutes old.\n**B. Precompute them** in a nightly job and show yesterday's. Faster still, but you'd lose today's numbers.\n\nI'd go with A. Which do you prefer?",
+    "needsUser": 0.97,
+    "spokenThen": "In lacy-platform, Claude offers two fixes for the slow dashboard: cache the totals for five minutes, or precompute them nightly and lose today's numbers. It suggests caching. Which one?",
+    "firstTokenMsThen": 470,
+    "kinds": [
+      "decision"
+    ],
+    "mustKeep": [
+      "needs_you: cache totals for five minutes (suggested) or precompute nightly?"
+    ],
+    "topic": "option B",
+    "offTopic": "the mobile app"
+  },
+  {
+    "id": "60a929add016",
+    "at": "2026-01-12T17:44:28.101Z",
+    "name": "tideline",
+    "titled": false,
+    "nameSession": false,
+    "tag": "codex",
+    "context": [],
+    "asked": [],
+    "reply": "I updated the README's install steps for the new CLI flags and fixed two broken links. I didn't touch the API docs, since they're generated from the code.",
+    "needsUser": 0.05,
+    "spokenThen": "In tideline, the README's install steps are updated and two broken links fixed; the generated API docs were left alone.",
+    "firstTokenMsThen": 390,
+    "kinds": [
+      "done"
+    ],
+    "mustKeep": [
+      "skipped: API docs not touched (generated)"
+    ]
+  },
+  {
+    "id": "9de7b9d276f7",
+    "at": "2026-01-12T18:20:35.842Z",
+    "name": "pixie",
+    "titled": false,
+    "nameSession": true,
+    "tag": "claude",
+    "context": [
+      "you → pixie: Cut a new release."
+    ],
+    "asked": [],
+    "reply": "I started the release: version 1.8.0 is building now. Signing and the upload to the store take about twenty minutes; I'll tell you when it's out. The changelog is in `CHANGELOG.md` if you want to look it over meanwhile.",
+    "needsUser": 0.1,
+    "spokenThen": "In pixie, version 1.8.0 is building; signing and the upload take about twenty minutes, and it'll tell you when it's out.",
+    "firstTokenMsThen": 420,
+    "kinds": [
+      "report"
+    ],
+    "mustKeep": []
+  },
+  {
+    "id": "23e6f0ba06ff",
+    "at": "2026-01-12T19:05:17.663Z",
+    "name": "clipkit",
+    "titled": false,
+    "nameSession": false,
+    "tag": "claude",
+    "context": [],
+    "asked": [],
+    "reply": "Here's what changed in the settings window:\n- **General:** the launch-at-login switch moved to the top.\n- **Shortcuts:** each shortcut now shows a reset button.\n- **Storage:** a new \"Keep clips for\" menu (a week, a month, forever).\n\nAll 153 settings tests pass. I haven't looked at it in the running app; I can build a Dev version and take screenshots if you'd like. None of this is committed.",
+    "needsUser": 0.85,
+    "spokenThen": "In clipkit, the settings window got three changes and its tests pass, but it hasn't been checked in the running app and nothing's committed. Want a Dev build with screenshots?",
+    "firstTokenMsThen": 560,
+    "kinds": [
+      "report",
+      "decision"
+    ],
+    "mustKeep": [
+      "caveat: not checked in the running app",
+      "skipped: nothing committed",
+      "needs_you: build a Dev version and take screenshots?"
+    ],
+    "topic": "the storage menu",
+    "offTopic": "the onboarding"
+  },
+  {
+    "id": "438b068a028d",
+    "at": "2026-01-12T20:31:40.395Z",
+    "name": "atlas-agents",
+    "titled": false,
+    "nameSession": false,
+    "tag": "claude",
+    "context": [],
+    "asked": [
+      "Is the fix deployed?"
+    ],
+    "reply": "Not yet. The fix is built, but the deploy queue was cleared before its turn, so I've started the deploy again. I'll tell you when it's live.",
+    "needsUser": 0.15,
+    "spokenThen": "In atlas agents, the fix is built but missed its deploy turn, so the deploy has been started again. It'll tell you when it's live.",
+    "firstTokenMsThen": 330,
+    "kinds": [
+      "report"
+    ],
+    "mustKeep": []
+  }
+]

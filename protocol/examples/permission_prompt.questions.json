@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "type": "permission_prompt",
+  "prompt": {
+    "promptId": "5d2e8c41-7a9b-4c3d-9e1f-2a3b4c5d6e7f",
+    "sessionId": "8f1c2a7e-3b4d-4e5f-9a6b-7c8d9e0f1a2b",
+    "name": "Kiko",
+    "what": "ask 2 questions: Install tmux, Checks",
+    "risky": false,
+    "remainingMs": 20000,
+    "questions": [
+      {
+        "question": "tmux isn't installed on this Mac. Can I install it with Homebrew tonight?",
+        "header": "Install tmux",
+        "options": [
+          { "label": "Yes, install it (Recommended)", "description": "I run brew install tmux; your own tmux setup is untouched." },
+          { "label": "No, I'll install it", "description": "I build the adapter without tmux; you install it in the morning." }
+        ],
+        "multiSelect": false
+      },
+      {
+        "question": "Which checks should run before each merge?",
+        "header": "Checks",
+        "options": [
+          { "label": "Typecheck", "description": "pnpm typecheck" },
+          { "label": "Unit tests", "description": "pnpm test" },
+          { "label": "App tests", "description": "pnpm test:app" }
+        ],
+        "multiSelect": true
+      }
+    ]
+  }
+}

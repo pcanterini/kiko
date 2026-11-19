@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "type": "sessions",
+  "sessions": [
+    {
+      "id": "e9a4c7d2-6b1f-4e35-9a80-3c7d5f1b4e26",
+      "name": "Kiko project",
+      "folder": "/Users/me/git/kiko",
+      "status": "idle",
+      "background": { "count": 3, "agents": 0, "quiet": 3, "quietSince": 1793346455000 },
+      "lastActivity": 1793346477000,
+      "summary": "I've added the line to the end of the file.",
+      "desktop": false
+    },
+    {
+      "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "name": "clipkit",
+      "folder": "/Users/me/git/clipkit",
+      "status": "working",
+      "background": { "count": 2, "agents": 2 },
+      "lastActivity": 1793380000000,
+      "summary": "Two agents are on the upload bug; I'm writing the tests meanwhile.",
+      "desktop": false
+    }
+  ]
+}

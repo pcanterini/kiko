@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "type": "history_page",
+  "sessionId": "8f1c2a7e-3b4d-4e5f-9a6b-7c8d9e0f1a2b",
+  "before": "2026-10-28T14:02:11.000Z",
+  "cursor": "1843202",
+  "items": [
+    { "kind": "you", "text": "What does the invoices table look like?", "at": "2026-10-28T13:58:02.000Z", "id": "1790044" },
+    { "kind": "steps", "summary": "read 1 file", "steps": [{ "tool": "Read", "title": "db/schema.ts", "detail": "", "error": false }], "at": "2026-10-28T13:58:05.000Z", "id": "1790561" },
+    { "kind": "claude", "text": "## invoices\n\n- `id`: uuid\n- `total`: integer, nullable\n\nNo timestamps yet.", "at": "2026-10-28T13:58:20.000Z", "id": "1801377" }
+  ],
+  "more": true,
+  "next": "1790044"
+}

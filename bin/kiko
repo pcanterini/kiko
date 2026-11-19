@@ -1,0 +1,7 @@
+#!/bin/sh
+# `kiko` and its commands (`kiko help` lists them: src/cli-args.ts USAGE): src/cli.ts, run by the
+# Node on PATH (24+).
+# Run from a checkout this is Kiko Dev, as bin/kiko-dev is (src/core/name.ts), which is the one to
+# put on PATH (`pnpm link:dev`), so `kiko` stays free for an installed release (DEVELOPMENT.md, "Developing").
+self=$(realpath "$0" 2>/dev/null || echo "$0")
+exec node "$(dirname "$self")/../src/cli.ts" "$@"

@@ -1,0 +1,9 @@
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ WARNING: Claude Code running in Bypass Permissions mode                      │
+│                                                                              │
+│ In Bypass Permissions mode, Claude Code will not ask for your approval       │
+│ before running potentially dangerous commands.                               │
+│                                                                              │
+│ ❯ No, exit                                                                   │
+│   Yes, I accept                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯

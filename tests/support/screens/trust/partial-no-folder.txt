@@ -1,0 +1,6 @@
+ Accessing workspace:
+
+
+
+ ❯ No, exit
+   Yes, I trust this folder

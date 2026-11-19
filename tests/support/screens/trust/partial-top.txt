@@ -1,0 +1,6 @@
+────────────────────────────────────────────────────────────────────────────────
+ Accessing workspace:
+
+ /Users/me/Kiko/scratch/2026-10-29-dozer
+
+ Quick safety check: Is this a project you created or one you trust? (Like your

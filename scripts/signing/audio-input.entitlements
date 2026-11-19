@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  For the helpers that open or ask for the microphone (mic, permissions): under the hardened
+  runtime a program without this gets no audio from the mic, whatever the microphone permission
+  of the terminal app it runs in says. The others need no entitlement (speech only reads the audio
+  mic sends it; player and opus don't record).
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+</dict>
+</plist>

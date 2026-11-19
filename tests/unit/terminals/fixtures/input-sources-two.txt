@@ -1,0 +1,20 @@
+(
+        {
+        InputSourceKind = "Keyboard Layout";
+        "KeyboardLayout ID" = 0;
+        "KeyboardLayout Name" = "U.S.";
+    },
+        {
+        "Bundle ID" = "com.apple.inputmethod.Kotoeri.RomajiTyping";
+        InputSourceKind = "Keyboard Input Method";
+    },
+        {
+        "Bundle ID" = "com.apple.inputmethod.Kotoeri.RomajiTyping";
+        "Input Mode" = "com.apple.inputmethod.Japanese";
+        InputSourceKind = "Input Mode";
+    },
+        {
+        "Bundle ID" = "com.apple.CharacterPaletteIM";
+        InputSourceKind = "Non Keyboard Input Method";
+    }
+)

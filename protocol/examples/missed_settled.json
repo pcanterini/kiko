@@ -1,0 +1,1 @@
+{ "v": 1, "type": "missed_settled", "items": [{ "id": 1793212937000, "settled": { "how": "answered_on_mac", "at": 1793212950000 } }, { "id": 1793212960000, "settled": { "how": "seen_on_mac", "at": 1793212961000 } }] }

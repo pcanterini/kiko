@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "type": "sessions",
+  "sessions": [
+    {
+      "id": "8f1c2a7e-3b4d-4e5f-9a6b-7c8d9e0f1a2b",
+      "name": "Lacy",
+      "folder": "/Users/me/git/lacy-platform",
+      "status": "working",
+      "lastActivity": 1793210400000,
+      "summary": "Running the tests now.",
+      "desktop": false,
+      "permissionMode": "acceptEdits",
+      "speaker": "Claude",
+      "color": "#D77757",
+      "can": { "reply": true, "interrupt": true, "rename": true, "close": true }
+    },
+    {
+      "id": "019a3f2e-7c1d-7b2a-9e4f-5d6c7b8a9f0e",
+      "name": "pixie",
+      "folder": "/Users/me/git/pixie",
+      "status": "idle",
+      "lastActivity": 1793210300000,
+      "summary": "The login bug is fixed and the tests pass.",
+      "desktop": false,
+      "agent": "Codex",
+      "speaker": "Codex",
+      "color": "#63A8F8",
+      "can": { "reply": true, "interrupt": true, "rename": true, "close": false }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "kiko-relay",
+  "version": "0.1.0",
+  "description": "Kiko's phone relay: a Cloudflare Worker and one Durable Object per Mac, passing the phone's end-to-end encrypted tunnel along",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 'test/**/*.test.ts'",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.test.json"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261101.1",
+    "@types/node": "^26.6.6",
+    "typescript": "7.0.2",
+    "wrangler": "^4.156.0"
+  }
+}

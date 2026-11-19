@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "type": "state",
+  "listening": false,
+  "talker": null,
+  "speaking": false,
+  "deciding": null,
+  "routed": { "text": "how much disk space do I have", "to": "Kiko", "sessionId": null },
+  "waiting": null,
+  "holding": null,
+  "muted": false,
+  "playOnMac": true,
+  "checking": { "what": "how much free disk space there is on the main volume", "startedAt": 1793213001000 }
+}

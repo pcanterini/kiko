@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "type": "state",
+  "listening": true,
+  "talker": "phone",
+  "speaking": false,
+  "deciding": null,
+  "routed": null,
+  "waiting": null,
+  "holding": { "text": "push it", "to": "clipkit" },
+  "muted": false,
+  "playOnMac": false
+}

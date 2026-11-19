@@ -1,0 +1,370 @@
+{
+  "description": "One relay connection, from fixed inputs: protocol/README.md, Relay, says what each step is. Hex unless named base64. Private keys are SHA-256 of 'kiko vector <label>' (UTF-8). Made by scripts/relay-vectors.ts and checked by tests/unit/remote/tunnel.test.ts.",
+  "keys": {
+    "macSigningSeed": "694894ab054113b1913146f90ddb4ad1f2037380852af4dd53481e25060e75bf",
+    "macSigningPublic": "8e677b49ffbcc839695ae3eabfd2edc32d113b11b26f0038b6ae1294634a8144",
+    "macSigningPublicBase64": "jmd7Sf+8yDlpWuPqv9Ltwy0ROxGybwA4tq4SlGNKgUQ=",
+    "room": "849df50a6492946b7ba26408b977720f",
+    "macStaticPrivate": "c52d16c92a8062e86eab069a92328d7e162b73e739df77428b5a1419bea7cecd",
+    "macStaticPublic": "183c38536fba564cc7f81f4eab38a84eef75fdf79edf8044094c33f5a1f24556",
+    "macStaticPublicBase64": "GDw4U2+6VkzH+B9OqzioTu91/fee34BECUwz9aHyRVY=",
+    "phoneStaticPrivate": "5f54553bea2e75542bc2e9c9ad3fd57e74c8b171fa675be21705e15fbb9688c0",
+    "phoneStaticPublic": "b62d00b4b4eeaf89407de7aa11d2590aa7c6ada691d45149a6dee1ec19c1f550",
+    "phoneStaticPublicBase64": "ti0AtLTur4lAfeeqEdJZCqfGraaR1FFJpt7h7BnB9VA=",
+    "phoneEphemeralPrivate": "de9e65f3ba5794fb26637076ff2a2772e2afb82df544f37151aacdb5916f7370",
+    "phoneEphemeralPublic": "d4090af1ca79564b8c5704682624254b8a6ee4aa23b36a91375b066caed7072e",
+    "macEphemeralPrivate": "e81b063115de7171c17d682723f9cfa92ca0de447fee8a22abc4629d20e4a455",
+    "macEphemeralPublic": "7ee0660ec96839c79d8c1415dd795c51edd966bc180f2556ceb4022589e4084e"
+  },
+  "macSignIn": {
+    "challenge": {
+      "type": "challenge",
+      "nonce": "vmfswyxxTKfoasIUHibq+BWiYaWzuHXTAqVIYOVvyZ4="
+    },
+    "signed": "6b696b6f2072656c6179206d616320763100383439646635306136343932393436623762613236343038623937373732306600be67ecc32c714ca7e86ac2141e26eaf815a261a5b3b875d302a54860e56fc99e",
+    "signature": "a0e22755a57ae90034da5c271b1ffe37bb309341f1849abefa885d3c10a3537cb0738d8f6ed8385fdbbbfdde814fb45ccc04f0ae7eb2fcc56dd7a3d732d26c00",
+    "auth": {
+      "type": "auth",
+      "key": "jmd7Sf+8yDlpWuPqv9Ltwy0ROxGybwA4tq4SlGNKgUQ=",
+      "sig": "oOInVaV66QA02lwnGx/+N7swk0HxhJq++ohdPBCjU3ywc42Pbtg4X9u7/d6BT7RczATwrn6y/MVt16PXMtJsAA=="
+    }
+  },
+  "phoneJoin": {
+    "credentialBase64": "WfE1olj0HlRStF/yA6Z0T4I1laJcPB43wfLI/P5ZtHY=",
+    "credentialHash": "f474e69d931efed2ff404041ed3321f83492912e80d82b44003eb97ce8848cfa",
+    "join": {
+      "type": "join",
+      "credential": "WfE1olj0HlRStF/yA6Z0T4I1laJcPB43wfLI/P5ZtHY="
+    },
+    "register": {
+      "type": "phones",
+      "credentials": [
+        "f474e69d931efed2ff404041ed3321f83492912e80d82b44003eb97ce8848cfa"
+      ]
+    }
+  },
+  "handshake": {
+    "protocolName": "Noise_IK_25519_ChaChaPoly_SHA256",
+    "prologue": "6b696b6f2072656c6179207631003834396466353061363439323934366237626132363430386239373737323066",
+    "message1": "01d4090af1ca79564b8c5704682624254b8a6ee4aa23b36a91375b066caed7072efa53f6f1885d066c013b5231185e3aaff47f7aeef36e399c52b0ac555deb104c45a3d5217ad09fbdd73c77d264bda16f32f8a0bf76f957e7ddce07fb2c290e9d",
+    "message2": "7ee0660ec96839c79d8c1415dd795c51edd966bc180f2556ceb4022589e4084eb0c4a58703f0491588503b3f41e7d848",
+    "handshakeHash": "e8f8ba44c36fe8ac6827e3bdf3259dac45014057a99239514886ac3733859acc",
+    "phoneToMacKey": "bb8ed25335c9aad03b4bc5d4d5fd77cd9c2e26440234528f7530e9aff94b6148",
+    "macToPhoneKey": "107a1a3ac800fd1cb7e879f57796f6f0fb8f2d837562ce8302f5e617ff924c31"
+  },
+  "records": [
+    {
+      "from": "phone",
+      "n": 0,
+      "nonce": "000000000000000000000000",
+      "type": "text",
+      "recordType": 1,
+      "text": "{\"v\":1,\"type\":\"hello\",\"token\":\"dGhpcyBpcyBub3QgYSByZWFsIHRva2VuIGF0IGFsbA\",\"device\":\"Test iPhone\",\"appVersion\":\"0.1.0\"}",
+      "plaintext": "017b2276223a312c2274797065223a2268656c6c6f222c22746f6b656e223a2264476870637942706379427562335167595342795a574673494852766132567549474630494746736241222c22646576696365223a2254657374206950686f6e65222c2261707056657273696f6e223a22302e312e30227d",
+      "frame": "45e0ddb11fd016ee8cfe6d2883ce09e6ece349358706daed5905fc9cfabb9c11527dec5d4ecb990f28014d84237622161c0ba528ed73239e985b37dba3bd5c83ab127eab882a418bafc13cf60a1383ad4c756eda8260c1a16eebdba99d1727e8bc72ae259738f50ff515c433d84fee5eec6cad1a74e7a75e92c101618644b9d755c2e64cb3314add"
+    },
+    {
+      "from": "mac",
+      "n": 0,
+      "nonce": "000000000000000000000000",
+      "type": "text",
+      "recordType": 1,
+      "text": "{\"v\":1,\"type\":\"welcome\",\"hubName\":\"Kiko on Test-Mac\",\"phoneId\":\"p-0a1b2c3d\",\"playOnPhone\":false,\"playOnMac\":true,\"versions\":[1]}",
+      "plaintext": "017b2276223a312c2274797065223a2277656c636f6d65222c226875624e616d65223a224b696b6f206f6e20546573742d4d6163222c2270686f6e654964223a22702d3061316232633364222c22706c61794f6e50686f6e65223a66616c73652c22706c61794f6e4d6163223a747275652c2276657273696f6e73223a5b315d7d",
+      "frame": "5cb05527a77f0485c5e6637fc2856f0bf4a4a8d7902d282260bb2dcef020feef558abce37615da8bb9bf4032e832e37265c9f8979da59da9076fd396ce46bf794e601770801cf906b6d2a31e446c300968b8313a21285e5d5e39f561fc3ba3d9e5213245efaf1b6b03148a93677a0f6209c1f3e285bb51f70ae42e464e6a7fc21d14c39948a80fe1bb43fbe0673ac9599b"
+    },
+    {
+      "from": "phone",
+      "n": 1,
+      "nonce": "000000000100000000000000",
+      "type": "binary",
+      "recordType": 2,
+      "body": "01010003f8fffe",
+      "plaintext": "0201010003f8fffe",
+      "frame": "ea5216aa9c247546e3202ca558dc4f5f293b047af835b4e7"
+    },
+    {
+      "from": "mac",
+      "n": 1,
+      "nonce": "000000000100000000000000",
+      "type": "ping",
+      "recordType": 3,
+      "body": "",
+      "plaintext": "03",
+      "frame": "45f90015a214d97c530c4f71783eac4d1a"
+    },
+    {
+      "from": "phone",
+      "n": 2,
+      "nonce": "000000000200000000000000",
+      "type": "pong",
+      "recordType": 4,
+      "body": "",
+      "plaintext": "04",
+      "frame": "0c6eb79e9fe240f19222c35b030dd89219"
+    },
+    {
+      "from": "mac",
+      "n": 2,
+      "nonce": "000000000200000000000000",
+      "type": "close",
+      "recordType": 5,
+      "code": 4001,
+      "reason": "unauthorized",
+      "plaintext": "050fa1756e617574686f72697a6564",
+      "frame": "e424e00008b02bd32165a5e5ee75859d91d3878f23daf31be91d92b79d2a8f"
+    }
+  ],
+  "local": {
+    "description": "On the home network, the phone's first frame is one byte saying how it opens (1 keys, 2 code, 3 token, 4 qr) then that handshake's first message. keys: Noise IK as in handshake, with this prologue. code, token and qr: CPace (CPACE-X25519-SHA512, initiator-responder, sid empty, ADb empty), then (k1, k2) = HKDF-SHA256(salt keysSalt, ISK) split as Noise does, k1 for the phone's records. token: prs = SHA-256 of the token's UTF-8, ada = the phone's id, first 16 bytes of SHA-256('kiko phone id v1' || 0x00 || prs). qr: prs = the QR code's 16-byte secret, ada = the code's id, first 16 bytes of SHA-256('kiko qr id v1' || 0x00 || secret); url is the pairing URL the code carries (relayUrl: with the relay), and symbol the QR code the Mac makes of url (rows top to bottom, 1 dark, no quiet zone); relayCredential = SHA-256('kiko qr relay v1' || 0x00 || secret), what a phone away from home joins the Mac's room with to pair by the code (relayJoin; the relay keeps only relayCredentialHash, which the Mac registers: relayPairing), then the same first frame as at home, through the relay. cpaceDraft: draft-irtf-cfrg-cpace-21's own vector B.1.",
+    "keys": {
+      "prologue": "6b696b6f206c6f63616c207631",
+      "message1": "01d4090af1ca79564b8c5704682624254b8a6ee4aa23b36a91375b066caed7072efa53f6f1885d066c013b5231185e3aaff47f7aeef36e399c52b0ac555deb104c50e769217c987d5eab1795f3b606b5ad54de840b289c969e34fd37cc34be5717",
+      "message2": "7ee0660ec96839c79d8c1415dd795c51edd966bc180f2556ceb4022589e4084ef8c3473caf553088a7458a12399ef2a0",
+      "handshakeHash": "c4700af57152864827d5ccf098ab0a4bddf7d14e05fd5bb031320bd580a79d03",
+      "phoneToMacKey": "bb8ed25335c9aad03b4bc5d4d5fd77cd9c2e26440234528f7530e9aff94b6148",
+      "macToPhoneKey": "107a1a3ac800fd1cb7e879f57796f6f0fb8f2d837562ce8302f5e617ff924c31",
+      "records": [
+        {
+          "from": "phone",
+          "n": 0,
+          "nonce": "000000000000000000000000",
+          "type": "text",
+          "recordType": 1,
+          "text": "{\"v\":1,\"type\":\"hello\",\"token\":\"dGhpcyBpcyBub3QgYSByZWFsIHRva2VuIGF0IGFsbA\",\"device\":\"Test iPhone\",\"appVersion\":\"0.1.0\"}",
+          "plaintext": "017b2276223a312c2274797065223a2268656c6c6f222c22746f6b656e223a2264476870637942706379427562335167595342795a574673494852766132567549474630494746736241222c22646576696365223a2254657374206950686f6e65222c2261707056657273696f6e223a22302e312e30227d",
+          "frame": "45e0ddb11fd016ee8cfe6d2883ce09e6ece349358706daed5905fc9cfabb9c11527dec5d4ecb990f28014d84237622161c0ba528ed73239e985b37dba3bd5c83ab127eab882a418bafc13cf60a1383ad4c756eda8260c1a16eebdba99d1727e8bc72ae259738f50ff515c433d84fee5eec6cad1a74e7a75e92c101618644b9d755c2e64cb3314add"
+        },
+        {
+          "from": "mac",
+          "n": 0,
+          "nonce": "000000000000000000000000",
+          "type": "text",
+          "recordType": 1,
+          "text": "{\"v\":1,\"type\":\"welcome\",\"hubName\":\"Kiko on Test-Mac\",\"phoneId\":\"p-0a1b2c3d\",\"playOnPhone\":false,\"playOnMac\":true,\"versions\":[1],\"macKey\":\"GDw4U2+6VkzH+B9OqzioTu91/fee34BECUwz9aHyRVY=\"}",
+          "plaintext": "017b2276223a312c2274797065223a2277656c636f6d65222c226875624e616d65223a224b696b6f206f6e20546573742d4d6163222c2270686f6e654964223a22702d3061316232633364222c22706c61794f6e50686f6e65223a66616c73652c22706c61794f6e4d6163223a747275652c2276657273696f6e73223a5b315d2c226d61634b6579223a224744773455322b36566b7a482b42394f717a696f547539312f666565333442454355777a396148795256593d227d",
+          "frame": "5cb05527a77f0485c5e6637fc2856f0bf4a4a8d7902d282260bb2dcef020feef558abce37615da8bb9bf4032e832e37265c9f8979da59da9076fd396ce46bf794e601770801cf906b6d2a31e446c300968b8313a21285e5d5e39f561fc3ba3d9e5213245efaf1b6b03148a93677a0f6209c1f3e285bb51f70ae42e464e6a7fc24cb5acc556db28129edcb7e5226d91d0399ae9cd9086a0133da8bffc3bb007e4627f94a311f317bbed055c889dc05c4c57b09fd02026930267685dd870b34e1ef002fd8ac6d3707fa5"
+        }
+      ]
+    },
+    "code": {
+      "code": "482913",
+      "prs": "343832393133",
+      "ci": "6b696b6f2070616972207631",
+      "ada": "",
+      "generator": "abdc31d6fd47e57087728827e52a82c713ec5ff75ff6d2822b05cc31d925f468",
+      "phoneScalar": "8e2ca7fa60383561bb84de39a361217df03b4d3f15fde2a808dc7a1dc09fbb22",
+      "macScalar": "d4f7d232ebb4f2a0db6f92d60d800f53dc16ea5689f5da0bc2812a14a0942f2c",
+      "phoneShare": "da89bf0083d35abc221b371b15ada48f10d465aa0f63b5a61f4a51c714ac3831",
+      "macShare": "63168b7dc5e40454643642ff83318828c43b3cf55aba035da1a0b1de11a59b26",
+      "k": "22a091447203cc95f5cdcfad65087fd8fdd4d68c23fba8d7548f7d931c40812a",
+      "isk": "7a96c769dc8ece414d05c8360c70d815e0cdfa0be3441c97c701a91c6fb5a10990ed1ca4e64343e46ce94112fcc8d08ff6dec6ce59749a18511b77b9ee545342",
+      "keysSalt": "6b696b6f206c6f63616c207631",
+      "phoneToMacKey": "ec0fc8b552334bedcf59a33df6e5fe15dacf6f85984cf1ffe456a1de834b62aa",
+      "macToPhoneKey": "ec0a58eeb8830c6fc62797bad1536b7d62cf258aaabd05c84ccee83c6800e924",
+      "firstFrame": "02da89bf0083d35abc221b371b15ada48f10d465aa0f63b5a61f4a51c714ac3831",
+      "answer": "63168b7dc5e40454643642ff83318828c43b3cf55aba035da1a0b1de11a59b26",
+      "records": [
+        {
+          "from": "phone",
+          "n": 0,
+          "nonce": "000000000000000000000000",
+          "type": "text",
+          "recordType": 1,
+          "text": "{\"v\":1,\"type\":\"pair\",\"code\":\"482913\",\"device\":\"Test iPhone\",\"appVersion\":\"0.1.0\",\"key\":\"ti0AtLTur4lAfeeqEdJZCqfGraaR1FFJpt7h7BnB9VA=\"}",
+          "plaintext": "017b2276223a312c2274797065223a2270616972222c22636f6465223a22343832393133222c22646576696365223a2254657374206950686f6e65222c2261707056657273696f6e223a22302e312e30222c226b6579223a2274693041744c547572346c416665657145644a5a43716647726161523146464a7074376837426e423956413d227d",
+          "frame": "e55490f545db44bbd845cb0b68a5cf7b813eef589289c3d3a8bca686017071b20a2f0f94cebeafa752bbf1dbc67efb67256783371d2025674cea8ebee655029c976bcda234464b8b9866b8fe4fad7081a14f3cce406d50c27b10519b23bb549403fee58ab9df29b092b4f78d1e1ae9f4328f1e87856b6a6c19f9e05487498d49e24371bedd37e20ad6608369d6532c9d8628bae5120063"
+        },
+        {
+          "from": "mac",
+          "n": 0,
+          "nonce": "000000000000000000000000",
+          "type": "text",
+          "recordType": 1,
+          "text": "{\"v\":1,\"type\":\"welcome\",\"hubName\":\"Kiko on Test-Mac\",\"phoneId\":\"p-0a1b2c3d\",\"playOnPhone\":false,\"playOnMac\":true,\"versions\":[1],\"macKey\":\"GDw4U2+6VkzH+B9OqzioTu91/fee34BECUwz9aHyRVY=\"}",
+          "plaintext": "017b2276223a312c2274797065223a2277656c636f6d65222c226875624e616d65223a224b696b6f206f6e20546573742d4d6163222c2270686f6e654964223a22702d3061316232633364222c22706c61794f6e50686f6e65223a66616c73652c22706c61794f6e4d6163223a747275652c2276657273696f6e73223a5b315d2c226d61634b6579223a224744773455322b36566b7a482b42394f717a696f547539312f666565333442454355777a396148795256593d227d",
+          "frame": "51da370539d6cfd398b6f33dd2350c63bd9fbfd27dbb1e5d4541cc5764fa34bf79c5eb7d245aa956150b3090987e05c236e940115d3a208004655844bc7a1c7efc9747997c19c68b1bcf48f1c485521ba4db6b4f90889f61a0248ac0c08cb940eab8dc152a987f69f7a90cd71e8956963cebc745aca361bf884cc27713f1e9c2314f06cbef53bd0fb7ef151a73b1897da629b1a032457f5bc3ffbfd63f0b110b0a97dadea8edf31822290c18e1b263b1d6ed6e2609f56110bc0218ba7f5b219246fd09eabb2896bba9"
+        }
+      ]
+    },
+    "token": {
+      "token": "dGhpcyBpcyBub3QgYSByZWFsIHRva2VuIGF0IGFsbA",
+      "tokenId": "268cf0f8d205d8fe6eae40d656694041",
+      "prs": "233e6dbd140362bf1a514488590f3fd7a1d726a5d945a1c8f70ebb853462195f",
+      "ci": "6b696b6f20746f6b656e207631",
+      "ada": "268cf0f8d205d8fe6eae40d656694041",
+      "generator": "a6430d30ea3ce5a04770303a4982f48a8e0bd8d9727b55193e01ff9a67cde41f",
+      "phoneScalar": "b4b844bd810739bb2f57cf9bdb8c888281b730cdc28ed38ab83280cde84e8fac",
+      "macScalar": "473013ea4ec30422d287ae5aa2491e24d63e2e55b8d744eb9d97e6a714c2e113",
+      "phoneShare": "d6edad89189a4d3565611c40a88f5cd31b41ca0fde68dafe4f04332af1b8457c",
+      "macShare": "427ce992b334db5cd42f5e56eb4c63e06b5f6800ed0c459ab885ef49a2c27f7d",
+      "k": "e717daf1d6ae140b9fa84bcc95af5681f7c1eef49c748839f594c451d2aeab4e",
+      "isk": "466bf8f25caad130934a4d698dced89df54acfdd7a7e65c4d370e2cb5f9db7851835cb42635dcf72067dce8e2d19f0fe3f5425a8e01efaaab9ab044697b668d1",
+      "keysSalt": "6b696b6f206c6f63616c207631",
+      "phoneToMacKey": "991a9e6a3d1be06f33e5105878c8e257a436ebc50669adbc106ffcdb28adc0be",
+      "macToPhoneKey": "764125df4bae32c6bdc150ac08511d63d05ee1e47680f2d02c13d66beba2ce1e",
+      "firstFrame": "03268cf0f8d205d8fe6eae40d656694041d6edad89189a4d3565611c40a88f5cd31b41ca0fde68dafe4f04332af1b8457c",
+      "answer": "427ce992b334db5cd42f5e56eb4c63e06b5f6800ed0c459ab885ef49a2c27f7d",
+      "records": [
+        {
+          "from": "phone",
+          "n": 0,
+          "nonce": "000000000000000000000000",
+          "type": "text",
+          "recordType": 1,
+          "text": "{\"v\":1,\"type\":\"hello\",\"token\":\"dGhpcyBpcyBub3QgYSByZWFsIHRva2VuIGF0IGFsbA\",\"device\":\"Test iPhone\",\"appVersion\":\"0.1.0\",\"key\":\"ti0AtLTur4lAfeeqEdJZCqfGraaR1FFJpt7h7BnB9VA=\"}",
+          "plaintext": "017b2276223a312c2274797065223a2268656c6c6f222c22746f6b656e223a2264476870637942706379427562335167595342795a574673494852766132567549474630494746736241222c22646576696365223a2254657374206950686f6e65222c2261707056657273696f6e223a22302e312e30222c226b6579223a2274693041744c547572346c416665657145644a5a43716647726161523146464a7074376837426e423956413d227d",
+          "frame": "7c523d0a2c724e65a34a696dbcf73ed4591483058ff6ff8604a8f5b82b2e6cd243088a3fc972f8cc4e84759247ef4532abae7066df3384891de339270a94d0159591701f9d292f1025683b17722a46c59da6c212952dbec63e5a1c6d3cbcef8b03d1f3cea161ee717ea93a6493acd42184cdd10906175b34a685b7eeb9bb534e10d06eae2c3c46618d3c13a389785b17b95a1290a7d4f1f8a06b151e777693737ebd196f3408b1b608b950483a028169681c649767921eea2e20e86195"
+        },
+        {
+          "from": "mac",
+          "n": 0,
+          "nonce": "000000000000000000000000",
+          "type": "text",
+          "recordType": 1,
+          "text": "{\"v\":1,\"type\":\"welcome\",\"hubName\":\"Kiko on Test-Mac\",\"phoneId\":\"p-0a1b2c3d\",\"playOnPhone\":false,\"playOnMac\":true,\"versions\":[1],\"macKey\":\"GDw4U2+6VkzH+B9OqzioTu91/fee34BECUwz9aHyRVY=\"}",
+          "plaintext": "017b2276223a312c2274797065223a2277656c636f6d65222c226875624e616d65223a224b696b6f206f6e20546573742d4d6163222c2270686f6e654964223a22702d3061316232633364222c22706c61794f6e50686f6e65223a66616c73652c22706c61794f6e4d6163223a747275652c2276657273696f6e73223a5b315d2c226d61634b6579223a224744773455322b36566b7a482b42394f717a696f547539312f666565333442454355777a396148795256593d227d",
+          "frame": "b6c2d59f10e496a5187458167053b63c383c25225b10359c52b7268c347d10511deb9b75bbe7f843c0d067795bc2d3c6692ac39d037857f5891db15d556dfd858b4e478f9344ba91eb829547a3da7ff9303a8c196a740a50bfd46a19f04b7969a78a43dd2f4e88e2023a11679de268fe36e81cd9aad181f125bdd56078401d1e4da0c66677884a0d796ec0c3ba7c4d366120148e0f2fee8757bc8b6cf6defdff1d2da33cc7a23378106622684fcc9da27929d2dff311f86135b461c618a137a54291c705c8abaa3e81"
+        }
+      ]
+    },
+    "qr": {
+      "secret": "9b356ebcc7e23f6e727c1168a3c2a5b3",
+      "secretBase64url": "mzVuvMfiP25yfBFoo8Klsw",
+      "qrId": "8ed5dfb65e52045b5b0e11d20b0ecaca",
+      "prs": "9b356ebcc7e23f6e727c1168a3c2a5b3",
+      "ci": "6b696b6f207172207631",
+      "ada": "8ed5dfb65e52045b5b0e11d20b0ecaca",
+      "generator": "e4686c505ea3994457075b11cd5c71b2ceb1ab797deb1fe143003200adb23800",
+      "phoneScalar": "dbaa1fcbc9dfcf82da4ec43d18905c1ff2743af0341f868940a5ae4629904e8e",
+      "macScalar": "1e86c14a80d1eb53b0c96b5bbf2828486d2e952df9bf1efc6e38f22936151450",
+      "phoneShare": "2965e223aefe7779b0befeca2cd8dc0f0dacf004a0fb220f35f23cd892a65375",
+      "macShare": "e376e8747e4366f95fd563ab10a166bdd4468369aa2cfc788a9c5aca9df4ff5c",
+      "k": "a32ba14b7e8f0b636f4e0475d4e111db2e8cb480f704e0cf23546130dd78c160",
+      "isk": "5482174fc9da72b904cca72ef613c350f62aa77e5e5bc54692d449f052b519e5162cfcabb995548eb833e00060d21dc30a8de75d6e27284732c45c95d4743f75",
+      "keysSalt": "6b696b6f206c6f63616c207631",
+      "phoneToMacKey": "8b34d84570a97a2986a56c62618d156f500b8a350de404cd152a245a6910f5f1",
+      "macToPhoneKey": "f98ff7bf2c970492754f23214c0fe5bf29d6eba6453502acb371ce749d6e6a70",
+      "firstFrame": "048ed5dfb65e52045b5b0e11d20b0ecaca2965e223aefe7779b0befeca2cd8dc0f0dacf004a0fb220f35f23cd892a65375",
+      "answer": "e376e8747e4366f95fd563ab10a166bdd4468369aa2cfc788a9c5aca9df4ff5c",
+      "records": [
+        {
+          "from": "phone",
+          "n": 0,
+          "nonce": "000000000000000000000000",
+          "type": "text",
+          "recordType": 1,
+          "text": "{\"v\":1,\"type\":\"pair\",\"code\":\"mzVuvMfiP25yfBFoo8Klsw\",\"device\":\"Test iPhone\",\"appVersion\":\"0.1.0\",\"key\":\"ti0AtLTur4lAfeeqEdJZCqfGraaR1FFJpt7h7BnB9VA=\"}",
+          "plaintext": "017b2276223a312c2274797065223a2270616972222c22636f6465223a226d7a5675764d6669503235796642466f6f384b6c7377222c22646576696365223a2254657374206950686f6e65222c2261707056657273696f6e223a22302e312e30222c226b6579223a2274693041744c547572346c416665657145644a5a43716647726161523146464a7074376837426e423956413d227d",
+          "frame": "c11437583fd980401fc20d6b9db8fb4bed032546ded5de8529faaea4db50e320198e68a1199801d6afa325471ba2a9a4f02a3dd9ebec27e77f5df6f53aab4c8bffc987364675f52b7d22cebf85e7361e70289b4269421234ee6ce3d385e1a6cbe8348b67fd011c73de967254e71703da02a846bdaf55ff016a7855feeeec7b51ad5ebc11b41f9d23165c6ac0c4fbf8df362c4a60286e5bbc9743497c0ded98bfd50039a465500e"
+        },
+        {
+          "from": "mac",
+          "n": 0,
+          "nonce": "000000000000000000000000",
+          "type": "text",
+          "recordType": 1,
+          "text": "{\"v\":1,\"type\":\"welcome\",\"hubName\":\"Kiko on Test-Mac\",\"phoneId\":\"p-0a1b2c3d\",\"playOnPhone\":false,\"playOnMac\":true,\"versions\":[1],\"macKey\":\"GDw4U2+6VkzH+B9OqzioTu91/fee34BECUwz9aHyRVY=\"}",
+          "plaintext": "017b2276223a312c2274797065223a2277656c636f6d65222c226875624e616d65223a224b696b6f206f6e20546573742d4d6163222c2270686f6e654964223a22702d3061316232633364222c22706c61794f6e50686f6e65223a66616c73652c22706c61794f6e4d6163223a747275652c2276657273696f6e73223a5b315d2c226d61634b6579223a224744773455322b36566b7a482b42394f717a696f547539312f666565333442454355777a396148795256593d227d",
+          "frame": "a6d035b03db11d59b67c809c4e5774b03d4133447c66064a6d78fc1f7e9ba16d9fdcc0e986aea7887e57117157f57fe58762a78a7e925a583421a10e44f225563387f522b4ba07097fdb6e8da57d960c0fc1535d514c259cf1d11a557157fc71f5d30a00f09d72726a3b6b70c3fa0e8eb2c2d655425416c0f220a4b0bc51c89695b6048f2c122d8b2bd0a1675dc1dfba0db767d1753e8b94400ea0726fd7b3cd18f68958597fed8e141c618a42b31cbc10cf131fa618b7029f17a35854efd62e6929678d5159657b05"
+        }
+      ],
+      "url": "sh.kiko.ios://pair?v=1&n=Kiko%20on%20Test-Mac&h=192.168.1.20,100.101.102.103,test-mac.tail1234.ts.net&p=7333&s=mzVuvMfiP25yfBFoo8Klsw&k=GDw4U2-6VkzH-B9OqzioTu91_fee34BECUwz9aHyRVY",
+      "relayUrl": "sh.kiko.ios://pair?v=1&n=Kiko%20on%20Test-Mac&h=192.168.1.20,100.101.102.103,test-mac.tail1234.ts.net&p=7333&s=mzVuvMfiP25yfBFoo8Klsw&k=GDw4U2-6VkzH-B9OqzioTu91_fee34BECUwz9aHyRVY&r=wss%3A%2F%2Frelay.example.com&m=849df50a6492946b7ba26408b977720f",
+      "link": {
+        "name": "Kiko on Test-Mac",
+        "hosts": [
+          "192.168.1.20",
+          "100.101.102.103",
+          "test-mac.tail1234.ts.net"
+        ],
+        "port": 7333,
+        "macKey": "GDw4U2+6VkzH+B9OqzioTu91/fee34BECUwz9aHyRVY=",
+        "relay": {
+          "url": "wss://relay.example.com",
+          "room": "849df50a6492946b7ba26408b977720f"
+        }
+      },
+      "symbol": {
+        "version": 8,
+        "ecc": "L",
+        "mask": 4,
+        "rows": [
+          "1111111011010101000110000011001011001100101111111",
+          "1000001010001111000001110000010010000011101000001",
+          "1011101010101101100000111000010010011001101011101",
+          "1011101011101001100111000101101100000001001011101",
+          "1011101001110011100110111110101011001000001011101",
+          "1000001010001100110101100011100110101010001000001",
+          "1111111010101010101010101010101010101010101111111",
+          "0000000001101100010010100010010101001100000000000",
+          "1100111000000010111000111111000011101100100101111",
+          "0111010010001101010110010111101111010011011100110",
+          "0010001000110111110000101010011101001010101100000",
+          "1110100010100010100001111011000010001000001010100",
+          "0110101000100001011001101100000010101011110110111",
+          "0011110110001110001011001010011010000110001101000",
+          "0100011011100110100110110011011111010011011011100",
+          "1101110110111001110100100111101110011010110011111",
+          "0011111011101111111000111101011110011010010110110",
+          "1101000011110001000110011111001001010011001000100",
+          "0011111110001001011101110111001100001101001000100",
+          "1010000001011100010001101010011000101100101110111",
+          "1111101111111110011001101010001011001101110110110",
+          "0111110011011011110011001010101010011011011001000",
+          "1101111110000001000101111110101110000010111111010",
+          "0000100010010100000100100010000111111000100010110",
+          "0100101010110110111000101010000011111111101011100",
+          "1110100010100000010110100010111111000111100010100",
+          "0011111110110110011010111111100100000110111110000",
+          "1001110010101011100111010010001011111110001000111",
+          "1100011110011001011010010110011110101100110000110",
+          "1100010011001110011010101101001110010110111110000",
+          "0011011011100000110110100001101100001111000111100",
+          "1011100100111011101001111111100000110000111001101",
+          "0000111100001110111101010001000011111100001001101",
+          "0000010010100001010110101001011000000111001011100",
+          "1101111101000000110010100100011101010111000110010",
+          "0101110111011101111000010100010111111110011111101",
+          "1010111000101110011111110110011010011010010000101",
+          "1100110100010011111010001110101001010011111111110",
+          "0100011111111001000100100000001000111001000110100",
+          "0111000000101110010101000011011000110100001001101",
+          "1110001001010110101001111110010010111010111111101",
+          "0000000010011001000110100010011011000011100011110",
+          "1111111000111110100001101011001111000111101011000",
+          "1000001010101010011001100011011110111011100010110",
+          "1011101010011000011111111110011010011001111110111",
+          "1011101001101110011010010010101011011011001101010",
+          "1011101001100100101011110001101101011010100100011",
+          "1000001011010001000000110101111111011011000101110",
+          "1111111010000110111000010001000111111010100101111"
+        ]
+      },
+      "relayCredential": "811270c9972dd862fe7f92d011d072c5b8ff2ce5286b8eb936598e28d3c7a1bf",
+      "relayCredentialBase64": "gRJwyZct2GL+f5LQEdByxbj/LOUoa465NlmOKNPHob8=",
+      "relayCredentialHash": "3f4bb81df4e29ba44049b5000d2713c77c5f5b13db647909f30eae42a22bfada",
+      "relayJoin": "{\"type\":\"join\",\"credential\":\"gRJwyZct2GL+f5LQEdByxbj/LOUoa465NlmOKNPHob8=\"}",
+      "relayPairing": "{\"type\":\"pairing\",\"credential\":\"3f4bb81df4e29ba44049b5000d2713c77c5f5b13db647909f30eae42a22bfada\",\"ttl\":300}"
+    },
+    "cpaceDraft": {
+      "prs": "50617373776f7264",
+      "ci": "0b415f696e69746961746f720b425f726573706f6e646572",
+      "sid": "7e4b4791d6a8ef019b936c79fb7f2c57",
+      "ada": "414461",
+      "adb": "414462",
+      "ya": "21b4f4bd9e64ed355c3eb676a28ebedaf6d8f17bdc365995b319097153044080",
+      "yb": "848b0779ff415f0af4ea14df9dd1d3c29ac41d836c7808896c4eba19c51ac40a",
+      "generator": "d04bf6d41f6a289632a2e929fa29bebd51092512a7829fdde7d314b62f05a73f",
+      "phoneShare": "1d13c89278cdadd826f6d8d7f887701430f8380ddc17611cdd6dc989ce0c9f32",
+      "macShare": "248cccf6d5cdc3646f0ad593f9e6cef4e69d4945f8372e623512ecea32185623",
+      "k": "5b067effbdc0b2a0e1d907b21ebb25cfedb96a852179a847c37e43ee71322c6b",
+      "isk": "6e19b875f7a561d6b3ca3dbb9ef42ac55de3e717881018204b8922b4d5e53bb2aa82c300bea7b65d2b671da71922ddf6472301b79bc270adfa8bf413285f2263"
+    }
+  },
+  "macFraming": {
+    "description": "Between the relay and the Mac, a phone's frame goes behind its channel: 4 bytes, big-endian. Here the first record above on channel 7.",
+    "channel": 7,
+    "frame": "0000000745e0ddb11fd016ee8cfe6d2883ce09e6ece349358706daed5905fc9cfabb9c11527dec5d4ecb990f28014d84237622161c0ba528ed73239e985b37dba3bd5c83ab127eab882a418bafc13cf60a1383ad4c756eda8260c1a16eebdba99d1727e8bc72ae259738f50ff515c433d84fee5eec6cad1a74e7a75e92c101618644b9d755c2e64cb3314add"
+  }
+}

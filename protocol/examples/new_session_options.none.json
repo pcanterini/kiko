@@ -1,0 +1,1 @@
+{ "v": 1, "type": "new_session_options", "projects": [], "root": null, "harnesses": [{ "id": "claude-code", "name": "Claude Code" }], "selected": "claude-code" }

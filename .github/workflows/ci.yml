@@ -1,0 +1,124 @@
+# CI: everything that runs on Linux runs there; macOS (billed at 10x Linux in a private repo) only for
+# what needs it: the Swift helpers' build and the unit tests that skip themselves off a Mac.
+#
+# Nothing here needs a secret, and nothing touches a real tmux server (-L kiko / -L kiko-dev),
+# the app's sockets, its config or the Keychain: the unit tests are hermetic (tests/setup.ts: a throwaway folder as cwd and TMPDIR,
+# KIKO_KEYCHAIN=off, no .env, no saved settings), and the keychain tests use a throwaway keychain
+# file of their own.
+#
+# Not here, on purpose (each needs keys, a real tmux, a signing identity or a deploy):
+# - pnpm test:live / test:e2e (real tmux servers, the real bin/kiko, an install; Bun) and
+#   pnpm test:app (the whole app on stubs): a later macOS job, by hand (workflow_dispatch) only.
+# - pnpm eval:routing / pnpm smoke (real models and speech services): API keys as repository
+#   secrets, in a manual or scheduled workflow of their own.
+# - pnpm release:build (Developer ID signing, notarization; RELEASING.md) and the relay's
+#   `wrangler deploy` (relay/README.md): a release workflow on tags, with the certificate, the
+#   notary profile and the Cloudflare token as secrets, behind a protected environment.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR cancels the run still going.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Already what tests/setup.ts sets; here too so nothing a step starts can reach the login keychain
+  # or look for a signing identity (helpers are signed ad hoc).
+  KIKO_KEYCHAIN: "off"
+  KIKO_SIGN_IDENTITY: "-"
+
+jobs:
+  checks:
+    name: Typecheck, lint, unit and relay tests (Linux)
+    # Off for now (the user, 2026-11-02): remove this line to turn it back on. The macOS job needs
+    # this one, so it doesn't run either while it's off.
+    if: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Whether this push changed anything but docs: a docs-only push to main skips the macOS job.
+      - name: Changed more than docs?
+        id: changes
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          code=true
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ] \
+            && git fetch --no-tags --depth=1 origin "$BEFORE" 2>/dev/null; then
+            git diff --name-only "$BEFORE" HEAD | grep -qvE '\.md$|^marketing/' || code=false
+          fi
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v6 # the version in package.json's packageManager
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            relay/pnpm-lock.yaml
+
+      # tests/unit/terminals/tmux.test.ts runs /bin/zsh (the Mac's login shell) to check its quoting.
+      - name: Install zsh
+        run: command -v zsh >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zsh; }
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir relay install --frozen-lockfile
+
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - name: Format check
+        run: pnpm exec biome format .
+      # The macOS-only ones skip themselves here, saying so; the macos job runs them.
+      - run: pnpm test
+      # The relay's typecheck and tests: the Worker run locally by wrangler (workerd on 127.0.0.1),
+      # nothing remote, no Cloudflare account.
+      - run: pnpm test:relay
+
+  macos:
+    name: Swift helpers and macOS-only unit tests
+    needs: checks
+    # Pushes to main (unless docs only) and by hand; never on PRs.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && needs.checks.outputs.code == 'true')
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Swift toolchain
+        run: |
+          sw_vers
+          swiftc --version
+      # Every helper in native/macos/, into native/macos/.build/ (the tests below use these builds).
+      - run: pnpm build:native
+
+      # The unit tests that check process.platform (Swift helpers, codesign, `security`, `say`,
+      # install.sh, the darwin-arm64 update): on Linux they skip, so they run here.
+      - name: macOS-only unit tests
+        run: |
+          grep -rlE 'process\.platform' tests/unit | sort > "$RUNNER_TEMP/macos-tests"
+          [ -s "$RUNNER_TEMP/macos-tests" ] || { echo "no macOS-only unit tests found"; exit 1; }
+          cat "$RUNNER_TEMP/macos-tests"
+          tr '\n' '\0' < "$RUNNER_TEMP/macos-tests" | xargs -0 node --test

@@ -1,0 +1,6 @@
+#!/bin/sh
+# `kiko-dev`: Kiko Dev, this checkout (src/core/name.ts: a checkout runs as Kiko Dev, with its
+# own settings folder, socket, tmux server and keys, so it never meets an installed Kiko). The same
+# as bin/kiko here; run by the Node on PATH (24+). On PATH: `pnpm link:dev` links it into ~/.local/bin.
+self=$(realpath "$0" 2>/dev/null || echo "$0")
+exec node "$(dirname "$self")/../src/cli.ts" "$@"

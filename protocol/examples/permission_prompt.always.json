@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "type": "permission_prompt",
+  "prompt": {
+    "promptId": "c0b9a1d2-e3f4-4a5b-8c6d-7e8f9a0b1c2d",
+    "sessionId": "8f1c2a7e-3b4d-4e5f-9a6b-7c8d9e0f1a2b",
+    "name": "Lacy",
+    "what": "run pnpm test",
+    "risky": false,
+    "remainingMs": 19400,
+    "canAlways": true
+  }
+}

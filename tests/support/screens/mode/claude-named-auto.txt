@@ -1,0 +1,25 @@
+⏺ The recipe page is committed but not live yet. The commit is 3e9c41a on main
+  in ~/git/recipes.
+
+  Auto mode held back the push: a push to main needs your OK first. Main
+  is what Netlify builds the live site from, so this one would go out to
+  everyone straight away. Three ways forward:
+
+  1. Push it yourself (quickest):
+  ! git -C ~/git/recipes push origin main
+     Netlify should then deploy to recipes.example.com in about a minute.
+  2. Let me do it: allow git push for this folder, and I'll push it
+     and watch the build until it's done.
+  3. A draft first: I push a branch instead, and Netlify gives you a
+     draft link to look at before anything changes for real.
+
+  Once it's live, open it on your phone to check it, and try "Print this
+  recipe" from the share menu.
+
+✻ Cogitated for 7m 10s · done 6:21 PM
+
+─────────────────────────────────────────────────────────────────── Bobby ─
+❯ 
+───────────────────────────────────────────────────────────────────────────
+  Model: Opus 5.5 | Ctx: 122.2k | ⎇ no git | (no git) | 🎙 voice on
+  ⏵⏵ auto mode on (shift+tab to cycle)

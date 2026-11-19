@@ -1,0 +1,16 @@
+.env
+.env.*
+node_modules/
+.DS_Store
+.build/
+logs/
+*.log
+.claude/
+.playwright-mcp/
+dist/
+# Build caches (scripts/build-tmux.sh: the tmux each release ships, by version and chip)
+.cache/
+# The routing and relay evals' results (tests/eval/run.ts, tests/eval/relay/run.ts)
+tests/eval/results/
+# The summary eval's real cases and verdicts (tests/eval/summary.ts --data private-evals): your own replies, never committed
+private-evals/

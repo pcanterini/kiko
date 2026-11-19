@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "type": "state",
+  "listening": false,
+  "talker": null,
+  "speaking": true,
+  "deciding": null,
+  "routed": null,
+  "waiting": null,
+  "holding": null,
+  "muted": false,
+  "playOnMac": true,
+  "catchingUp": true
+}

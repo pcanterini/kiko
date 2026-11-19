@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "type": "voice_marks",
+  "line": 4127,
+  "words": [
+    { "i": 0, "text": "Restarted", "start": 1440, "end": 13680 },
+    { "i": 1, "text": "nginx", "start": 14160, "end": 27840 },
+    { "i": 2, "text": "on", "start": 28320, "end": 33600 },
+    { "i": 3, "text": "kiko.sh.", "start": 34080, "end": 69600 }
+  ],
+  "exact": true
+}

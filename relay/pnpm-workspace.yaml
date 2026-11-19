@@ -1,0 +1,5 @@
+# The relay is its own package, apart from Kiko's (its tests and wrangler need nothing of the app's).
+# workerd and esbuild come as prebuilt binaries for this platform; their install scripts only check them.
+allowBuilds:
+  esbuild: false
+  workerd: false

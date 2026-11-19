@@ -1,0 +1,36 @@
+// Kiko's phone relay (README.md): kiko-relay at wss://relay.kiko.sh, deployed 2026-11-03 (README.md,
+// "Deploying"). Tests start it locally (test/support.ts) and never deploy.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kiko-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROOMS", "class_name": "Room" },
+      // The shared counts of rooms opened per address and per account (src/limiter.ts), added 2026-11-19.
+      { "name": "LIMITER", "class_name": "Limiter" }
+    ]
+  },
+  // SQLite-backed, as Workers' free plan needs; the room keeps only a few keys in it, a limiter one.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Room"] },
+    { "tag": "v2", "new_sqlite_classes": ["Limiter"] }
+  ],
+  // The last good JWKS of the relay pass, kept with no expiry (src/pass.ts): one key, "jwks", written
+  // only when the keys change. Local and empty in tests.
+  // PASS_REVOKED: the relay pass's revocation list (src/revoked.ts), kiko-relay-pass-revoked, created
+  // 2026-11-04. The account service binds the same namespace and is the only writer; the relay
+  // only reads it, at join. Each entry expires on its own (26 hours). Local and empty in tests.
+  "kv_namespaces": [
+    { "binding": "PASS_KEYS", "id": "8b22ed8272904ffb86ec0fb9c94d1fdb" },
+    { "binding": "PASS_REVOKED", "id": "368bf570dd0d4d4abd17a2833875f77f" }
+  ],
+  // Its own hostname, on the kiko.sh zone (Cloudflare makes the DNS record and the certificate).
+  "routes": [{ "pattern": "relay.kiko.sh", "custom_domain": true }],
+  // No *.workers.dev address: the relay is only ever relay.kiko.sh.
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": false }
+  // Secrets (set apart, never here): RELAY_LIMITS, production's abuse limits (README.md, "Limits").
+}

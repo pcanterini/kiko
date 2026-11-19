@@ -1,0 +1,20 @@
+{
+  "v": 1,
+  "type": "history_delta",
+  "sessionId": "8f1c2a7e-3b4d-4e5f-9a6b-7c8d9e0f1a2b",
+  "after": "1902114",
+  "items": [
+    { "kind": "you", "text": "Yes, backfill it.", "at": "2026-10-28T14:04:02.000Z", "id": "1904877" },
+    {
+      "kind": "steps",
+      "summary": "edited 1 file, ran 1 command",
+      "steps": [
+        { "tool": "Edit", "title": "db/migrations/0042_invoice_created_at.sql", "detail": "+1 −0", "error": false, "added": 1, "removed": 0, "diff": "@@ -3,1 +3,2 @@\n ALTER TABLE invoices ADD COLUMN created_at timestamptz;\n+UPDATE invoices SET created_at = issued_on;" },
+        { "tool": "Bash", "title": "pnpm test", "detail": "", "error": false, "running": true }
+      ],
+      "at": "2026-10-28T14:04:06.000Z",
+      "id": "1905310.1"
+    }
+  ],
+  "doing": "Running pnpm test"
+}

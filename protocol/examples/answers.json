@@ -1,0 +1,6 @@
+{
+  "v": 1,
+  "type": "answers",
+  "promptId": "5d2e8c41-7a9b-4c3d-9e1f-2a3b4c5d6e7f",
+  "answers": [{ "labels": ["Yes, install it (Recommended)"] }, { "labels": ["Typecheck", "Unit tests"] }]
+}

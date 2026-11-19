@@ -1,0 +1,15 @@
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Accessing workspace:                                                         │
+│                                                                              │
+│ ~/Kiko/scratch/2026-10-29-dozer                                           │
+│                                                                              │
+│ Quick safety check: Is this a project you created or one you trust? (Like    │
+│ your own code, a well-known open source project, or work from your team).    │
+│                                                                              │
+│ Claude Code'll be able to read, edit, and execute files here.                │
+│                                                                              │
+│ ❯ No, exit                                                                   │
+│   Yes, I trust this folder                                                   │
+│                                                                              │
+│ Enter to confirm · Esc to cancel                                             │
+╰──────────────────────────────────────────────────────────────────────────────╯

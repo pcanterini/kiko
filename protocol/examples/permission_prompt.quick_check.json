@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "type": "permission_prompt",
+  "prompt": {
+    "promptId": "q-3f1e2d4c",
+    "sessionId": "kiko",
+    "name": "Kiko's quick check",
+    "checkFor": "how much space Docker images take",
+    "what": "run docker system df",
+    "risky": false,
+    "remainingMs": 20000,
+    "canAlways": true
+  }
+}

@@ -1,0 +1,5 @@
+# Routing eval output: per-run logs from src/core/log.ts and JSON results.
+eval/logs/
+eval/results/
+# Faked-app harness (pnpm test:app): its working directory, settings, state and logs.
+harness/out/

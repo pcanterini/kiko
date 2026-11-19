@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "type": "permission_prompt",
+  "prompt": null,
+  "queued": [
+    {
+      "promptId": "5d2e8f10-6a7b-4c3d-9e1f-2a3b4c5d6e7f",
+      "sessionId": "380874b1-c0eb-453a-86f3-5bb22b834393",
+      "name": "kiko-dev",
+      "what": "run: cd /tmp/kiko-380874b1 && (xcrun simctl io booted recordVideo --force /tmp/kiko-380874b1/swipe.mp4 & echo $! > /tmp/kiko-380874b1/rec.pid); sleep 75…",
+      "risky": false,
+      "remainingMs": null,
+      "canAlways": true,
+      "detail": "cd /tmp/kiko-380874b1 && (xcrun simctl io booted recordVideo --force /tmp/kiko-380874b1/swipe.mp4 & echo $! > /tmp/kiko-380874b1/rec.pid)\nsleep 75\nkill -INT $(cat /tmp/kiko-380874b1/rec.pid)"
+    }
+  ]
+}

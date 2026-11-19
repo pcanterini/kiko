@@ -1,0 +1,1 @@
+{ "v": 1, "type": "paired", "token": "q3Zt8n0yX1d6bJpVfK2rLwM9aHc4sGeU7oTiN5kQyRm", "phoneId": "p-5d2e9f", "hubName": "Kiko on Test-Mac", "addresses": [{ "kind": "home", "host": "192.168.1.20", "port": 7333 }, { "kind": "bonjour", "host": "Test-Mac.local", "port": 7333 }, { "kind": "tailscale", "host": "100.64.0.10", "port": 7333 }] }

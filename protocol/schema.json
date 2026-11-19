@@ -1,0 +1,1305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kiko.sh/protocol/schema.json",
+  "title": "Kiko hub and app messages",
+  "description": "JSON text frames over one WebSocket, both ways. Every message carries the protocol version (v) and its type; $defs has one entry per message type, named after it, and x-from says who sends it (phone or hub). Audio is base64 inside JSON: the phone sends 16 kHz mono 16-bit little-endian PCM (talk_audio), the hub sends 24 kHz mono 16-bit little-endian PCM (audio); or, once both sides agree on it (welcome codecs, audio_codecs, audio_codec), Opus in binary frames, described in README.md.",
+  "version": 1,
+  "oneOf": [
+    { "$ref": "#/$defs/hello" },
+    { "$ref": "#/$defs/pair" },
+    { "$ref": "#/$defs/get_sessions" },
+    { "$ref": "#/$defs/watch" },
+    { "$ref": "#/$defs/talk_start" },
+    { "$ref": "#/$defs/talk_audio" },
+    { "$ref": "#/$defs/talk_end" },
+    { "$ref": "#/$defs/talk_cancel" },
+    { "$ref": "#/$defs/type" },
+    { "$ref": "#/$defs/permission" },
+    { "$ref": "#/$defs/answers" },
+    { "$ref": "#/$defs/play_on_phone" },
+    { "$ref": "#/$defs/play_on_mac" },
+    { "$ref": "#/$defs/presence" },
+    { "$ref": "#/$defs/seen" },
+    { "$ref": "#/$defs/catch_up" },
+    { "$ref": "#/$defs/catch_up_stop" },
+    { "$ref": "#/$defs/audio_codecs" },
+    { "$ref": "#/$defs/get_new_session_options" },
+    { "$ref": "#/$defs/new_session" },
+    { "$ref": "#/$defs/history_before" },
+    { "$ref": "#/$defs/session_action" },
+    { "$ref": "#/$defs/hear" },
+    { "$ref": "#/$defs/show_full" },
+    { "$ref": "#/$defs/relay_pair" },
+    { "$ref": "#/$defs/hands_free" },
+    { "$ref": "#/$defs/listen_audio" },
+    { "$ref": "#/$defs/hands_free_playing" },
+    { "$ref": "#/$defs/sign_in" },
+    { "$ref": "#/$defs/sign_in_opened" },
+    { "$ref": "#/$defs/welcome" },
+    { "$ref": "#/$defs/paired" },
+    { "$ref": "#/$defs/sessions" },
+    { "$ref": "#/$defs/state" },
+    { "$ref": "#/$defs/history" },
+    { "$ref": "#/$defs/history_delta" },
+    { "$ref": "#/$defs/announcement" },
+    { "$ref": "#/$defs/permission_prompt" },
+    { "$ref": "#/$defs/heard" },
+    { "$ref": "#/$defs/audio" },
+    { "$ref": "#/$defs/audio_stop" },
+    { "$ref": "#/$defs/speak" },
+    { "$ref": "#/$defs/voice_marks" },
+    { "$ref": "#/$defs/missed" },
+    { "$ref": "#/$defs/missed_settled" },
+    { "$ref": "#/$defs/missed_line" },
+    { "$ref": "#/$defs/talk_status" },
+    { "$ref": "#/$defs/audio_codec" },
+    { "$ref": "#/$defs/new_session_options" },
+    { "$ref": "#/$defs/new_session_status" },
+    { "$ref": "#/$defs/history_page" },
+    { "$ref": "#/$defs/full_text" },
+    { "$ref": "#/$defs/session_note" },
+    { "$ref": "#/$defs/relay_paired" },
+    { "$ref": "#/$defs/hands_free_state" },
+    { "$ref": "#/$defs/account" },
+    { "$ref": "#/$defs/plan_required" },
+    { "$ref": "#/$defs/mac_sign_in" },
+    { "$ref": "#/$defs/error" }
+  ],
+  "$defs": {
+    "v": { "const": 1 },
+    "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "optionalSessionId": { "type": ["string", "null"], "minLength": 1, "maxLength": 200 },
+    "talkId": {
+      "description": "The phone's own id for one press or one typed message, so the hub's talk_status can say what became of it. Optional: a phone sends it only to a hub whose welcome says talkStatus; without it there are no statuses.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "device": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "prompt": {
+      "description": "A permission prompt as the phone gets it: the one being asked (permission_prompt prompt) or one held waiting its turn (permission_prompt queued, remainingMs null). Answered with permission (or answers, for questions) by its promptId.",
+      "type": "object",
+      "required": ["promptId", "sessionId", "name", "what", "risky", "remainingMs"],
+      "additionalProperties": false,
+      "properties": {
+        "promptId": { "$ref": "#/$defs/id" },
+        "sessionId": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "maxLength": 200 },
+        "what": { "type": "string", "maxLength": 2000 },
+        "risky": { "type": "boolean" },
+        "remainingMs": { "type": ["integer", "null"], "minimum": 0 },
+        "canAlways": {
+          "description": "Optional: it can be allowed for good (\"don't ask again\"), as the Mac's card offers with a: the phone shows Always, and answers it with permission always. Left out when it can't (a trust question, questions, a block allowed once, an agent with no always), and by older hubs.",
+          "const": true
+        },
+        "folder": {
+          "description": "Optional: the prompt is its agent (Claude Code, Codex) asking whether to trust this folder before the session starts (not a tool permission): Allow trusts it and the session starts; Deny ends the session. Answered with permission, like any other. A hub that doesn't send it never asks this.",
+          "type": "string",
+          "maxLength": 2000
+        },
+        "checkFor": {
+          "description": "Optional: the prompt is Kiko's own quick check (sessionId \"kiko\") asking to use a tool, and this is what the check was asked to find out: the card says \"Kiko's quick check, for: <checkFor>\" over what it wants to do. Left out for every other prompt, and by older hubs (an app that doesn't know it shows the name alone).",
+          "type": "string",
+          "maxLength": 200
+        },
+        "detail": {
+          "description": "Optional: the tool call in full where what is short (a command as written, its lines kept; a file's or a page's whole path), for the phone's request sheet; the card shows what. Left out where what says it all, and by older hubs.",
+          "type": "string",
+          "maxLength": 8000
+        },
+        "questions": {
+          "description": "Optional: the prompt is the session asking you questions (Claude's multiple choice), not asking to use a tool. Each with its header, the question, its options (labels and descriptions) and whether it takes several; any can also be answered in your own words. Answered with answers, not permission. A hub that doesn't send it never asks questions this way.",
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": ["question", "header", "options", "multiSelect"],
+            "additionalProperties": false,
+            "properties": {
+              "question": { "type": "string", "maxLength": 2000 },
+              "header": { "type": "string", "maxLength": 200 },
+              "options": {
+                "type": "array",
+                "maxItems": 8,
+                "items": {
+                  "type": "object",
+                  "required": ["label", "description"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "label": { "type": "string", "maxLength": 500 },
+                    "description": { "type": "string", "maxLength": 2000 }
+                  }
+                }
+              },
+              "multiSelect": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "room": { "description": "A Mac's room on the relay: the first 16 bytes of SHA-256 of its Ed25519 public key, lowercase hex.", "type": "string", "pattern": "^[0-9a-f]{32}$" },
+    "key32": { "description": "A 32-byte key (or credential), standard base64 with padding.", "type": "string", "pattern": "^[A-Za-z0-9+/]{43}=$" },
+    "appVersion": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "pcm": { "type": "string", "maxLength": 400000, "pattern": "^[A-Za-z0-9+/]*={0,2}$" },
+    "addresses": {
+      "description": "Every way to reach the hub, best first: home (an address on the Mac's local network), bonjour (its .local name, on the same network), tailscale (its Tailscale address or MagicDNS name, from anywhere on the tailnet), then relay (the relay's url and the Mac's room there; only to a phone set up for it with relay_pair, and tried last, through the tunnel in README.md, Relay). The phone keeps them and tries them in turn; the same token works on each. Optional: a hub that doesn't send it leaves the phone with the address it paired on.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": ["kind", "host", "port"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "enum": ["home", "bonjour", "tailscale", "relay"] },
+          "host": { "description": "relay: the relay's host name, from its url (for an app that reads only host and port).", "type": "string", "minLength": 1, "maxLength": 255 },
+          "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "url": { "description": "relay only: the relay, wss:// (ws:// only in tests). The phone joins at <url>/v1/phone/<room>.", "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^wss?://" },
+          "room": { "description": "relay only: the Mac's room there.", "$ref": "#/$defs/room" }
+        }
+      }
+    },
+
+    "hello": {
+      "description": "Phone, first message on every later connection: its token from pairing. Answered with welcome, or error unauthorized (forget the token and pair again) or version.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "token", "device", "appVersion"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "hello" },
+        "token": { "type": "string", "minLength": 20, "maxLength": 200 },
+        "device": { "$ref": "#/$defs/device" },
+        "appVersion": { "$ref": "#/$defs/appVersion" },
+        "key": {
+          "description": "On a token handshake only (README.md, Encrypted at home): the phone's static X25519 public key, which the hub keeps with it; the phone opens with its keys from then on. Left out otherwise.",
+          "$ref": "#/$defs/key32"
+        }
+      }
+    },
+    "pair": {
+      "description": "Phone, first message when it has no token: the 6-digit code the Mac's settings screen shows, sent only on a pairing handshake (CPace with the code: README.md, Encrypted at home), never in the clear; or, on a QR handshake (CPace with the QR code's secret: README.md, Pairing with a QR code), that secret as the QR code has it (22 characters, base64url). Answered with paired then welcome, or error bad_code, pairing_closed, too_many_attempts, qr_used or qr_expired.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "code", "device", "appVersion"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "pair" },
+        "code": { "type": "string", "pattern": "^([0-9]{6}|[A-Za-z0-9_-]{22})$" },
+        "device": { "$ref": "#/$defs/device" },
+        "appVersion": { "$ref": "#/$defs/appVersion" },
+        "key": {
+          "description": "The phone's static X25519 public key, which the hub keeps with it: the phone opens its tunnel with it from then on (README.md, Encrypted at home).",
+          "$ref": "#/$defs/key32"
+        }
+      }
+    },
+    "get_sessions": {
+      "description": "Phone: send the session list again (pull to refresh). The hub also sends it after welcome and whenever it changes.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type"],
+      "additionalProperties": false,
+      "properties": { "v": { "$ref": "#/$defs/v" }, "type": { "const": "get_sessions" } }
+    },
+    "watch": {
+      "description": "Phone: it's showing this session's screen. The hub sends its history now and again whenever its transcript changes, until another watch (null: none). paged (only to a hub whose welcome says paging): the history is a window of its newest turns within turns and bytes (the hub's 30 and 64 KB when left out; at most 100 and 256 KB), its items with ids and long ones cut (cut: show_full brings the rest), then only what changed, as history_delta.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "sessionId"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "watch" },
+        "sessionId": { "$ref": "#/$defs/optionalSessionId" },
+        "paged": { "description": "A window, then deltas (above). Optional: left out by older phones, which get the whole history each time as before (within 128 KB).", "const": true },
+        "turns": { "description": "The window's (or page's) turns at most: a turn is your words and what came of them.", "type": "integer", "minimum": 1, "maximum": 100 },
+        "bytes": { "description": "The window's (or page's) items' JSON at most, in bytes (the newest item always goes, whatever its size).", "type": "integer", "minimum": 8192, "maximum": 262144 }
+      }
+    },
+    "talk_start": {
+      "description": "Phone: the talk button went down. With a sessionId (talking inside that session's screen) the words go straight to it, as if you'd named it; without, the hub decides where they go. Answered with error busy when someone else is talking. With a talkId, the hub says what became of the words (talk_status). With dictate (and a talkId), the words are only written down: a new session's first message, which new_session names by that talkId; they never go anywhere by themselves.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "talk_start" },
+        "sessionId": { "$ref": "#/$defs/optionalSessionId" },
+        "talkId": { "$ref": "#/$defs/talkId" },
+        "dictate": {
+          "description": "The words are a new session's first message (new_session names this press by its talkId): transcribed on the hub, never routed, and nothing is sent until new_session asks. No talk_status for them but failed (turned down: busy). Optional: sent only to a hub whose welcome says newSession.",
+          "type": "boolean"
+        }
+      }
+    },
+    "talk_audio": {
+      "description": "Phone, while the talk button is held: base64 of 16 kHz mono 16-bit little-endian PCM, any length up to about 6 seconds (100 ms chunks are typical).",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "talk_audio" },
+        "data": { "$ref": "#/$defs/pcm" }
+      }
+    },
+    "talk_end": {
+      "description": "Phone: the talk button went up. The hub turns the audio into words and deals with them like push-to-talk words.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type"],
+      "additionalProperties": false,
+      "properties": { "v": { "$ref": "#/$defs/v" }, "type": { "const": "talk_end" } }
+    },
+    "talk_cancel": {
+      "description": "Phone: drop what was said since talk_start; nothing is sent anywhere. A phone that disconnects while talking is cancelled the same way.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type"],
+      "additionalProperties": false,
+      "properties": { "v": { "$ref": "#/$defs/v" }, "type": { "const": "talk_cancel" } }
+    },
+    "type": {
+      "description": "Phone: typed words, dealt with like spoken ones (minus speech-to-text). sessionId and talkId as in talk_start.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "type" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "sessionId": { "$ref": "#/$defs/optionalSessionId" },
+        "talkId": { "$ref": "#/$defs/talkId" }
+      }
+    },
+    "permission": {
+      "description": "Phone: allow or deny the permission prompt the hub showed (permission_prompt). Settled exactly like the Mac's own allow and deny keys. always: allowed and not asked again, sent only for a prompt whose canAlways is true (an older hub refuses it). Answered with error prompt_gone when it isn't waiting any more.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "promptId", "decision"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "permission" },
+        "promptId": { "$ref": "#/$defs/id" },
+        "decision": { "enum": ["allow", "deny", "always"] }
+      }
+    },
+    "answers": {
+      "description": "Phone: the answers to a prompt's questions (permission_prompt with questions), one per question in order: the options picked (their labels, exactly; one at most unless it takes several) and words of your own (text), at least one of the two. Settled like an answer by voice on the Mac. Answered with error prompt_gone when it isn't waiting any more, bad_answers when they don't fit its questions.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "promptId", "answers"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "answers" },
+        "promptId": { "$ref": "#/$defs/id" },
+        "answers": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": ["labels"],
+            "additionalProperties": false,
+            "properties": {
+              "labels": { "type": "array", "maxItems": 8, "items": { "type": "string", "maxLength": 500 } },
+              "text": { "type": "string", "maxLength": 4000 }
+            }
+          }
+        }
+      }
+    },
+    "play_on_phone": {
+      "description": "Phone: send the hub's spoken output here (audio, speak, audio_stop), or stop. Off until the phone asks; the hub remembers it per paired phone.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "on"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "play_on_phone" },
+        "on": { "type": "boolean" }
+      }
+    },
+    "play_on_mac": {
+      "description": "Phone: switch Play on this Mac, the hub's own setting (saved on the Mac, which has no setting for it: only phones switch it; applies at once). Off, the Mac plays nothing and phones with play_on_phone still get it all. Every phone sees the new value in state.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "on"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "play_on_mac" },
+        "on": { "type": "boolean" }
+      }
+    },
+    "presence": {
+      "description": "Phone: where its app is. Right after every welcome (away: in the background or locked as it connected; back: in front), then as it changes: the app went to the background or the phone was locked (away), or it came back to the front (back). Until a connection says, the hub doesn't count it as playing what's said; one that hasn't said within 2 seconds (an older app) is taken to be in front. Best effort: a phone that goes without saying is away once its connection drops. What Kiko says while a paired phone is away or not connected is kept for it; back from away is answered with missed.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "state"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "presence" },
+        "state": { "enum": ["away", "back"] }
+      }
+    },
+    "seen": {
+      "description": "Phone: the missed lines up to this id (and every one before it) have been read: the list was opened, or the banner marked as read or dismissed. They aren't sent in missed again.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "upTo"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "seen" },
+        "upTo": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "catch_up": {
+      "description": "Phone: read missed lines aloud, oldest first: the ones in ids (read or not, as the phone's list shows them), else every unread one that isn't settled. summary true (Catch me up): one short combined summary of the ones not settled, grouped by session (just the line when there's one; line by line if the summary can't be made). Otherwise each line, one by one (a line's play button, Read all). Through the hub's usual speech: on phones with play_on_phone, on the Mac with its Play on this Mac. They wait behind anything being said and never cut it; a press or catch_up_stop stops them. They count as read.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "catch_up" },
+        "ids": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "maxItems": 50 },
+        "summary": { "type": "boolean" }
+      }
+    },
+    "catch_up_stop": {
+      "description": "Phone: Stop, while a catch-up is on (state catchingUp): what's still to come of it is dropped, and what's being said of it is cut, as a press would.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "catch_up_stop" }
+      }
+    },
+    "audio_codecs": {
+      "description": "Phone, right after welcome when welcome lists codecs, and again when the app's Compressed audio is switched: the codecs it takes for audio, best first (empty: PCM in JSON only). The hub picks one and says it (audio_codec). Never sent to a hub whose welcome lists none (an older hub refuses a message it doesn't know).",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "codecs"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "audio_codecs" },
+        "codecs": { "type": "array", "items": { "type": "string", "maxLength": 20 }, "maxItems": 10 }
+      }
+    },
+    "get_new_session_options": {
+      "description": "Phone: its New session sheet opened: where a new session can start and in which agent (new_session_options). Sent only to a hub whose welcome says newSession.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type"],
+      "additionalProperties": false,
+      "properties": { "v": { "$ref": "#/$defs/v" }, "type": { "const": "get_new_session_options" } }
+    },
+    "new_session": {
+      "description": "Phone: start a new session, as the Mac's own picker does: in one place (folder: one of new_session_options' projects; newProject: a new project of that name in its root; scratch: a fresh scratch folder), in the agent harness names (one of its harnesses; missing: the one it preselected), with a first message typed (text) or said (talkId: a talk_start with dictate, whose transcript is used, never routed), or none (just open it), and optionally its name (name: given as it starts, on the agent's command line or as a rename once its agent lists it; only for a harness whose canName is true in new_session_options, failed otherwise). Answered with new_session_status for its requestId. Sent only to a hub whose welcome says newSession.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "requestId"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "new_session" },
+        "requestId": { "description": "The phone's own id for this request: new_session_status carries it.", "type": "string", "minLength": 1, "maxLength": 100 },
+        "folder": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "newProject": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "scratch": { "type": "boolean" },
+        "harness": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "talkId": { "$ref": "#/$defs/talkId" },
+        "name": { "description": "Optional: what to call it. Only for a harness whose canName is true.", "type": "string", "minLength": 1, "maxLength": 80 }
+      }
+    },
+    "history_before": {
+      "description": "Phone, on a session's screen scrolled to the top: its conversation before `before` (the at of the oldest item it has). Answered with history_page. Sent only to a hub whose welcome says chat (an older hub refuses a message it doesn't know). cursor (only to a hub whose welcome says paging): the id of the oldest item the phone has (history's cursor, or a page's next); the page is then the newest turns before it within turns and bytes (as in watch), long items cut as in the window.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "sessionId", "before"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "history_before" },
+        "sessionId": { "$ref": "#/$defs/id" },
+        "before": { "description": "ISO 8601: an item's at, as the hub sent it.", "type": "string", "minLength": 1, "maxLength": 40 },
+        "cursor": { "description": "The oldest item's id (above). Optional: an older phone pages by before alone.", "type": "string", "minLength": 1, "maxLength": 200 },
+        "turns": { "description": "The window's (or page's) turns at most: a turn is your words and what came of them.", "type": "integer", "minimum": 1, "maximum": 100 },
+        "bytes": { "description": "The window's (or page's) items' JSON at most, in bytes (the newest item always goes, whatever its size).", "type": "integer", "minimum": 8192, "maximum": 262144 }
+      }
+    },
+    "session_action": {
+      "description": "Phone, from a session screen's menu or its Interrupt button: interrupt its turn, rename it (name), or close it, as the Mac's window menu does, for a session whose can says it can. What came of it is said in session_note; error no_session when it isn't running any more. Sent only to a hub whose welcome says chat.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "sessionId", "action"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "session_action" },
+        "sessionId": { "$ref": "#/$defs/id" },
+        "action": { "enum": ["interrupt", "rename", "close"] },
+        "name": { "description": "rename: the new name.", "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "hear": {
+      "description": "Phone, a message's Hear it again: the hub reads the text aloud through its usual speech (on phones with play_on_phone, on the Mac with Play on this Mac), behind what's being said, as a missed line's play button does; Markdown's marks and code left out. Sent only to a hub whose welcome says chat.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "hear" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "sessionId": { "$ref": "#/$defs/optionalSessionId" }
+      }
+    },
+    "show_full": {
+      "description": "Phone, on a cut item's Show full (only to a hub whose welcome says paging): the rest of it, answered with full_text. step: which of a steps item's steps (from 0); left out for a message.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "sessionId", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "show_full" },
+        "sessionId": { "$ref": "#/$defs/id" },
+        "id": { "description": "The item's id.", "type": "string", "minLength": 1, "maxLength": 200 },
+        "step": { "type": "integer", "minimum": 0, "maximum": 39 }
+      }
+    },
+
+    "hands_free": {
+      "description": "Phone: its Hands-free (a setting, off by default) on, with the app in front, or off (switched off, or the app went to the background or the phone was locked). On: the hub listens for its spoken name in what this phone's mic hears (listen_audio), exactly as the Mac's own hands-free does, and says how it's going (hands_free_state). Sent again after each welcome while it's on and the app is in front. Only to a hub whose welcome says handsFree (an older hub refuses a message it doesn't know). One listener per phone; presence away stops it too.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "on"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "hands_free" },
+        "on": { "type": "boolean" }
+      }
+    },
+    "listen_audio": {
+      "description": "Phone, while its Hands-free is on: base64 of 16 kHz mono 16-bit little-endian PCM its mic heard, sent only while someone is talking (a level gate on the phone, with a moment before it so the name isn't clipped), never while the phone plays Kiko's voice unless the hub says it's woken (hands_free_state by). ~100 ms per message. On Opus: binary frames of kind 3 instead (README.md). Dropped by the hub while the phone's Hands-free isn't on.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "data"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "listen_audio" },
+        "data": { "$ref": "#/$defs/pcm" }
+      }
+    },
+    "hands_free_playing": {
+      "description": "Phone, while its Hands-free is on: playing true as it starts to play Kiko's voice or a cue (from the hub's audio, speak or a cue), false once its mic is back (the playback over, and the phone's own ~300 ms after it, while it sends nothing). Sent on each change only. The hub's listener for this phone is deaf from the first until the second, instead of guessing the phone's playback from when it sent the audio: the reply window's quiet room is judged from when the phone's mic came back. Only to a hub whose welcome says handsFreePlaying (an older hub refuses a message it doesn't know); dropped by the hub while the phone's Hands-free isn't on.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "playing"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "hands_free_playing" },
+        "playing": { "type": "boolean" }
+      }
+    },
+    "sign_in": {
+      "description": "Phone, only on a connection refused with plan_required that said signIn: keep this connection to sign the Mac in from here, and send the code (mac_sign_in). Sent within 3 seconds of plan_required, and again to try again after mac_sign_in failed. Never sent otherwise: a hub refuses it from a phone that isn't waiting for a sign-in.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "sign_in" }
+      }
+    },
+    "sign_in_opened": {
+      "description": "Phone, while it shows a mac_sign_in code: the approval page was opened in the browser from the phone (its Sign in to Kiko button). The Mac says so on its screen (\"Signing in from your iPhone…\", with the code to check). Informational only.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "sign_in_opened" }
+      }
+    },
+    "relay_pair": {
+      "description": "Phone: set this phone up for the relay (README.md, Relay): its static X25519 public key, which the hub keeps with it and checks the tunnel's handshake by. Answered with relay_paired, which replaces anything from before. Sent only to a hub whose welcome says relay, normally once, on the home network, right after pairing. ticket: the account check, from phase 2 (a ticket our server signed); left out in phase 1, and ignored by a hub that doesn't check.",
+      "x-from": "phone",
+      "type": "object",
+      "required": ["v", "type", "key"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "relay_pair" },
+        "key": { "$ref": "#/$defs/key32" },
+        "ticket": { "type": "string", "minLength": 1, "maxLength": 4000 }
+      }
+    },
+
+    "welcome": {
+      "description": "Hub: the phone is in. sessions, state and permission_prompt follow at once. addresses: every way to reach the hub, looked up again as phones connect; the phone refreshes its list from each welcome.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "hubName", "phoneId", "playOnPhone", "playOnMac", "versions"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "welcome" },
+        "hubName": { "type": "string", "maxLength": 200 },
+        "phoneId": { "$ref": "#/$defs/id" },
+        "playOnPhone": { "type": "boolean" },
+        "playOnMac": { "description": "The Mac plays the spoken output too (its setting; play_on_mac switches it).", "type": "boolean" },
+        "versions": { "type": "array", "items": { "type": "integer" }, "maxItems": 20 },
+        "addresses": { "$ref": "#/$defs/addresses" },
+        "macKey": {
+          "description": "The Mac's static X25519 public key (relay_paired's macKey): the phone's tunnel on the home network is to it (README.md, Encrypted at home). A phone that opened with its pairing code or its token keeps it and opens with its keys from then on. Optional: an older hub doesn't send it.",
+          "$ref": "#/$defs/key32"
+        },
+        "talkStatus": { "description": "This hub takes a talkId in talk_start and type, and answers with talk_status. Optional: a phone sends talkId only when it's true (an older hub refuses fields it doesn't know).", "type": "boolean" },
+        "codecs": { "description": "The codecs this hub takes for audio besides PCM in JSON, which is always there (opus: Opus in binary frames, both ways). Optional: a phone that takes one says so with audio_codecs, and only when this lists one.", "type": "array", "items": { "enum": ["opus"] }, "maxItems": 10 },
+        "newSession": { "description": "This hub starts sessions for the phone: get_new_session_options, new_session and talk_start's dictate. Optional: a phone sends none of them unless it's true (an older hub refuses types and fields it doesn't know).", "type": "boolean" },
+        "chat": { "description": "This hub takes the session screen's messages: history_before (earlier messages, answered with history_page), session_action (interrupt, rename, close; session_note says how it went) and hear. Optional: a phone sends them only when it's true (an older hub refuses a message it doesn't know).", "type": "boolean" },
+        "paging": { "description": "This hub pages a session's screen: watch paged (a window of its newest turns, then history_delta), history_before with a cursor (history_page with next) and show_full (answered with full_text). Optional: a phone sends paged, cursor and show_full only when it's true (an older hub refuses fields and messages it doesn't know).", "type": "boolean" },
+        "relay": { "description": "This hub has the relay on: the phone may set itself up for it with relay_pair (README.md, Relay). Optional: a phone sends relay_pair only when it's true (an older hub refuses a message it doesn't know).", "type": "boolean" },
+        "handsFree": { "description": "This hub listens hands-free for the phone: hands_free, listen_audio (and binary frames of kind 3 on Opus), answered with hands_free_state. Optional: a phone sends none of them unless it's true (an older hub refuses a message it doesn't know).", "type": "boolean" },
+        "handsFreePlaying": { "description": "This hub takes hands_free_playing: a phone listening hands-free says when it plays Kiko's voice and when its mic is back, and its listener follows it. Optional, with handsFree: a phone sends it only when it's true (an older hub refuses a message it doesn't know).", "type": "boolean" }
+      }
+    },
+    "paired": {
+      "description": "Hub: the code was right. The phone keeps the token (in its Keychain) and sends it in hello from now on; the hub keeps only its hash.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "token", "phoneId", "hubName"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "paired" },
+        "token": { "type": "string", "minLength": 20, "maxLength": 200 },
+        "phoneId": { "$ref": "#/$defs/id" },
+        "hubName": { "type": "string", "maxLength": 200 },
+        "addresses": { "$ref": "#/$defs/addresses" }
+      }
+    },
+    "session": {
+      "type": "object",
+      "required": ["id", "name", "folder", "status", "lastActivity", "summary", "desktop"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "maxLength": 200 },
+        "folder": { "type": "string", "maxLength": 1000 },
+        "status": {
+          "description": "working: on a turn (never only for what it runs in the background: that's background). idle: at its prompt. needs_you: a permission prompt waits. waiting: it finished and waits for your reply (its reply window).",
+          "enum": ["working", "idle", "needs_you", "waiting"]
+        },
+        "background": {
+          "description": "What it still runs in the background (shells, monitors, subagents), apart from its status, which is never working for it alone: shown beside it (\"idle · 3 agents running\"). count: how many. agents: how many of them are subagents (the rest shells and monitors); missing where it isn't known (from older hubs). quiet: how many of them have shown no sign of life (output, a transcript written) for 10 minutes or more, and quietSince, ms since 1970, when the longest quiet one last did: one left over, stuck (\"3 in background (quiet 8h)\"); both missing when none is. Missing when nothing runs, or its agent can't tell (Claude Code's sessions say: a background job from its own file, a terminal or desktop session from its transcript). Optional: older hubs never send it.",
+          "type": "object",
+          "required": ["count"],
+          "additionalProperties": false,
+          "properties": {
+            "count": { "type": "integer", "minimum": 1, "maximum": 1000 },
+            "agents": { "type": "integer", "minimum": 0, "maximum": 1000 },
+            "quiet": { "type": "integer", "minimum": 1, "maximum": 1000 },
+            "quietSince": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "lastActivity": { "description": "When its transcript last changed, ms since 1970; null when unknown.", "type": ["integer", "null"], "minimum": 0 },
+        "summary": { "description": "One line: the latest summary read out, else Claude's last words.", "type": "string", "maxLength": 400 },
+        "desktop": { "description": "Runs in the Claude desktop app rather than a terminal.", "type": "boolean" },
+        "agent": { "description": "The coding agent it runs in, by name, when it isn't Claude Code (\"Codex\", \"T3 Code\"); missing for Claude Code's. Optional: older hubs never send it.", "type": "string", "maxLength": 40 },
+        "permissionMode": {
+          "description": "Its permission mode now, in Claude Code's words: default (Manual: asks for edits and commands), acceptEdits, plan, auto (a classifier decides; what it blocks never comes as a prompt), dontAsk, bypassPermissions. A Codex session's is the nearest of these. Missing while it isn't known (no hook has said yet; an agent that never says). Optional: older hubs never send it.",
+          "enum": ["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"]
+        },
+        "startedAs": { "description": "The id it was listed under while it started (starting-…), for a session the hub opened: a phone showing it under that id follows it here. Optional: older hubs never send it.", "type": "string", "minLength": 1, "maxLength": 200 },
+        "speaker": { "description": "Who answers in it, for the heading over its replies, as the Mac's viewer heads them: \"Claude\", \"Codex\", \"OpenCode\", else its agent's name (\"T3 Code\"). Optional: older hubs never send it.", "type": "string", "maxLength": 40 },
+        "color": { "description": "Its agent's colour (#rrggbb, for a dark background, as the Mac's lists draw it), for that heading. Optional: missing for an agent with none, and from older hubs.", "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "colorLight": { "description": "Its agent's colour for a light background (#rrggbb), beside color (the dark one): the home screen's mark and name in light mode. Optional: missing for an agent with none, and from older hubs (the phone uses color).", "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "mark": { "description": "Its harness's mark, one character, as the Mac's lists draw it before its name (✻ Claude Code, ⌬ Codex, ⊤ T3 Code, ▣ OpenCode), in its agent's colour. Optional: missing for an agent with none, and from older hubs (the phone draws a dot).", "type": "string", "minLength": 1, "maxLength": 4 },
+        "inApp": { "description": "It runs in Kiko's own window (its tmux: the Mac's list's INTERNAL), else outside it (a terminal, the desktop app, T3 Code: EXTERNAL). The home screen groups them so. Optional: older hubs never send it (the phone lists them all together).", "type": "boolean" },
+        "doing": { "description": "While it works (status working): what it's doing now, in a few words (\"Running pnpm build\", \"Editing app.ts\"), as its history says it (history's doing), for the home screen's live line. Followed only while a phone is in front; missing when nothing is known (between steps; an agent that writes a step down only once it's done), when it isn't working, and from older hubs.", "type": "string", "minLength": 1, "maxLength": 120 },
+        "can": {
+          "description": "What can be done to it from here, as the Mac's window menu offers it (reply: your words reach it at any moment; interrupt its turn; rename; close): session_action only for what's true. Optional: older hubs never send it.",
+          "type": "object",
+          "required": ["reply", "interrupt", "rename", "close"],
+          "additionalProperties": false,
+          "properties": {
+            "reply": { "type": "boolean" },
+            "interrupt": { "type": "boolean" },
+            "rename": { "type": "boolean" },
+            "close": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "sessions": {
+      "description": "Hub: the running sessions, after welcome, on get_sessions and whenever anything in the list changes.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "sessions"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "sessions" },
+        "sessions": { "type": "array", "items": { "$ref": "#/$defs/session" }, "maxItems": 200 }
+      }
+    },
+    "state": {
+      "description": "Hub: what Kiko is doing, for the top of the home screen. Sent whenever it changes.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "listening", "talker", "speaking", "deciding", "routed", "waiting", "holding", "muted", "playOnMac"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "state" },
+        "listening": { "type": "boolean" },
+        "talker": { "description": "Who holds the floor while listening.", "enum": ["phone", "mac", "hands-free", null] },
+        "speaking": { "type": "boolean" },
+        "deciding": { "description": "Your words while the hub works out where they go.", "type": ["string", "null"], "maxLength": 4000 },
+        "routed": {
+          "description": "Where your last words went, for a moment after.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["text", "to", "sessionId"],
+              "additionalProperties": false,
+              "properties": {
+                "text": { "type": "string", "maxLength": 4000 },
+                "to": { "type": "string", "maxLength": 200 },
+                "sessionId": { "$ref": "#/$defs/optionalSessionId" }
+              }
+            }
+          ]
+        },
+        "waiting": {
+          "description": "The session waiting for your reply or permission answer, and ms left in its window (null: not counting yet).",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["sessionId", "name", "kind", "remainingMs"],
+              "additionalProperties": false,
+              "properties": {
+                "sessionId": { "$ref": "#/$defs/id" },
+                "name": { "type": "string", "maxLength": 200 },
+                "kind": { "enum": ["reply", "permission"] },
+                "remainingMs": { "type": ["integer", "null"], "minimum": 0 }
+              }
+            }
+          ]
+        },
+        "holding": {
+          "description": "A send the hub wasn't sure of, held a moment before it goes to `to`.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["text", "to"],
+              "additionalProperties": false,
+              "properties": { "text": { "type": "string", "maxLength": 4000 }, "to": { "type": "string", "maxLength": 200 } }
+            }
+          ]
+        },
+        "muted": { "type": "boolean" },
+        "playOnMac": { "description": "The Mac plays the spoken output (its Play on this Mac setting): off, only phones with play_on_phone hear it.", "type": "boolean" },
+        "catchingUp": { "description": "A phone's catch-up is being said or waits its turn: the phone shows Stop (catch_up_stop). Optional: a hub that doesn't send it has no Stop.", "type": "boolean" },
+        "cost": { "description": "What Kiko itself has cost this run, in US dollars (its routing, summaries and voice; not Claude Code's), to 3 decimals: the number the Mac's bottom line shows. Only on your own keys: left out while Kiko's AI runs on the subscription (the free trial or Kiko Pro, or did this run), when the Mac shows no dollars either. Optional: a state without it shows none, even after one with it.", "type": "number", "minimum": 0 },
+        "checking": {
+          "description": "Optional: Kiko's quick check is running (a one-off read-only look at the Mac: disk space, what's on a port): what it checks and since when (ms since 1970). The talk bar says \"Kiko is checking: <what>\". Left out while none runs, and by older hubs; an app that doesn't know it ignores it. It's never a session.",
+          "type": "object",
+          "required": ["what", "startedAt"],
+          "additionalProperties": false,
+          "properties": { "what": { "type": "string", "maxLength": 200 }, "startedAt": { "type": "integer", "minimum": 0 } }
+        }
+      }
+    },
+    "step": {
+      "description": "One tool call: a command (title the command, detail its output, cut short), a file edit (title the file, detail +added −removed lines), a read or search.",
+      "type": "object",
+      "required": ["tool", "title", "detail", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "tool": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 500 },
+        "detail": { "type": "string", "maxLength": 2000 },
+        "error": { "type": "boolean" },
+        "added": { "description": "A file edit: lines added. Optional: left out for anything else, and by older hubs.", "type": "integer", "minimum": 0 },
+        "removed": { "description": "A file edit: lines removed.", "type": "integer", "minimum": 0 },
+        "diff": { "description": "A file edit's changes as a unified diff's lines (-old, +new, a space for context, @@ before a hunk), cut short. Optional: left out where its agent's record doesn't have them, and for older edits past what one history carries.", "type": "string", "maxLength": 6000 },
+        "running": { "description": "No result yet: it's running now (only in the newest item). Optional: left out once it's done, and by older hubs.", "const": true },
+        "cut": { "description": "Its output or diff was cut short (or the diff left out): show_full with this step brings the rest. Optional: only to a phone that pages.", "const": true }
+      }
+    },
+    "itemId": { "description": "Where it starts in its agent's record (the file's byte offset, \".1\" for an entry's second item), else the hub's own: the same item has the same id in a window, a delta, a page and full_text. Optional: only to a phone that pages.", "type": "string", "minLength": 1, "maxLength": 200 },
+    "historyItem": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "text", "at"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "enum": ["you", "claude"] },
+            "text": { "type": "string", "maxLength": 8000 },
+            "at": { "description": "ISO 8601, or null when the transcript didn't say.", "type": ["string", "null"], "maxLength": 40 },
+            "id": { "$ref": "#/$defs/itemId" },
+            "cut": { "description": "Its text was cut short: show_full brings the rest. Optional: only to a phone that pages.", "const": true }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "summary", "steps", "at"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "const": "steps" },
+            "summary": { "description": "\"ran 4 commands, edited 3 files\"", "type": "string", "maxLength": 300 },
+            "steps": { "type": "array", "items": { "$ref": "#/$defs/step" }, "maxItems": 40 },
+            "at": { "type": ["string", "null"], "maxLength": 40 },
+            "id": { "$ref": "#/$defs/itemId" }
+          }
+        }
+      ]
+    },
+    "history": {
+      "description": "Hub: a watched session's recent conversation from its Claude Code transcript, oldest first: your messages, Claude's text, and the tool calls between them folded into steps. truncated: older items (or steps) were left out. To a phone that pages (watch paged): a window of the newest turns, each item with its id; truncated: there's more before it (history_before with cursor). To an older phone: the whole history, within 128 KB (the oldest items left out, truncated).",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "sessionId", "items", "truncated"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "history" },
+        "sessionId": { "$ref": "#/$defs/id" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/historyItem" }, "maxItems": 80 },
+        "truncated": { "type": "boolean" },
+        "doing": { "description": "What it's doing now, while its newest item's last step runs (\"Running pnpm build\"), for a live line under the conversation. Optional: left out when no step runs, and by older hubs.", "type": "string", "maxLength": 200 },
+        "cursor": { "description": "The window's first item's id, to ask for the page before it (history_before cursor). Optional: only to a phone that pages, and only when truncated.", "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "history_delta": {
+      "description": "Hub, to a phone that pages (watch paged): what changed in the watched session's conversation since its last history or history_delta. The phone keeps its items up to and including after's, drops the rest and puts items after it (none: only doing changed). No after: it had none, and items are all of them. An after it doesn't have: it watches again, for a whole window. doing as in history (left out: nothing running).",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "sessionId", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "history_delta" },
+        "sessionId": { "$ref": "#/$defs/id" },
+        "after": { "$ref": "#/$defs/itemId" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/historyItem" }, "maxItems": 80 },
+        "doing": { "description": "As in history.", "type": "string", "maxLength": 200 }
+      }
+    },
+    "announcement": {
+      "description": "Hub: it started saying something (start: the text, the session it's about or null for the app's own line), or went quiet (end).",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "phase"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "announcement" },
+        "phase": { "enum": ["start", "end"] },
+        "text": { "type": "string", "maxLength": 8000 },
+        "kind": { "enum": ["session", "app"] },
+        "sessionId": { "$ref": "#/$defs/optionalSessionId" },
+        "checked": {
+          "description": "Optional, on an app line (kind app) that ends Kiko's quick check: what it checked. The phone keeps the line as \"Kiko checked: <checked>\" with the text as its answer. Left out otherwise, and by older hubs.",
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    },
+    "permission_prompt": {
+      "description": "Hub: the permission prompt being asked now, or null once it's settled or gone. Sent again when it changes (risky is known a moment after it starts).",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "prompt"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "permission_prompt" },
+        "quiet": {
+          "description": "Only to a connection that's away, true while someone is at the Mac (as in missed_line): the phone posts no notification for this prompt; its card is there as usual. Left out otherwise. An optional addition to version 1: an app that doesn't know it notifies as before.",
+          "const": true
+        },
+        "prompt": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/prompt" }]
+        },
+        "queued": {
+          "description": "Optional: every other prompt Kiko holds open, waiting its turn to be asked (behind the one being asked, or behind a reply being read out), in the order they'd be asked, each with remainingMs null: the phone shows each as a card answered with permission (or answers) by its promptId, as for the one asked. Left out when there are none, and by older hubs (an app that doesn't know it shows only prompt).",
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/prompt" }
+        }
+      }
+    },
+    "heard": {
+      "description": "Hub: your words as speech-to-text hears them while you talk (final false), and as they were taken (final true).",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "text", "final"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "heard" },
+        "text": { "type": "string", "maxLength": 4000 },
+        "final": { "type": "boolean" }
+      }
+    },
+    "audio": {
+      "description": "Hub, to phones that asked for it (play_on_phone): the spoken output as it's made, base64 of 24 kHz mono 16-bit little-endian PCM. Play in order. With cue true: a cue for a press made on this phone (your words reached a session), sent to it only and played whether or not play_on_phone is on.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "data", "rate"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "audio" },
+        "data": { "$ref": "#/$defs/pcm" },
+        "rate": { "const": 24000 },
+        "cue": { "type": "boolean" }
+      }
+    },
+    "audio_stop": {
+      "description": "Hub: cut what's playing and drop what's queued (someone started talking).",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type"],
+      "additionalProperties": false,
+      "properties": { "v": { "$ref": "#/$defs/v" }, "type": { "const": "audio_stop" } }
+    },
+    "missedItem": {
+      "description": "A line Kiko said: id (goes up with time; seen and catch_up name it), at (ms since 1970), the session it's about and its name then (null for Kiko's own lines), kind (announcement: a session's turn read out; permission: a session asking to use a tool; answer: Kiko's own line, such as a quick question's answer), and the text as shown (not respelled for the voice).",
+      "type": "object",
+      "required": ["id", "at", "sessionId", "name", "kind", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "at": { "type": "integer", "minimum": 0 },
+        "sessionId": { "$ref": "#/$defs/optionalSessionId" },
+        "name": { "type": ["string", "null"], "maxLength": 200 },
+        "kind": { "enum": ["announcement", "permission", "answer"] },
+        "text": { "type": "string", "maxLength": 8000 },
+        "settled": { "$ref": "#/$defs/settled" },
+        "checked": {
+          "description": "Optional, on an answer that ends Kiko's quick check: what it checked. Shown as \"Kiko checked: <checked>\" over the text (the answer Kiko spoke), and read in a catch-up as \"Kiko checked <checked>: <text>\". Left out otherwise, and by older hubs.",
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    },
+    "settled": {
+      "description": "The line no longer needs you, and why: answered_on_mac / answered_on_phone (a permission question answered there: the Mac's keys, by voice, its terminal; or the phone), replied (words went to that session since, by any path), superseded (a newer update from the same session), closed (the question went away without an answer here), seen_on_mac (you took it in at the Mac: said out loud there while you were at it, or shown there and Kiko used on the Mac within 2 minutes; a phone that doesn't know a value shows it as handled). at: when, ms since 1970. Optional: absent while it still needs you. Catch-ups leave settled lines out.",
+      "type": "object",
+      "required": ["how", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "how": { "enum": ["answered_on_mac", "answered_on_phone", "replied", "superseded", "closed", "seen_on_mac"] },
+        "at": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "missed_settled": {
+      "description": "Hub: missed lines this phone has (read or not) that no longer need it: as they're settled, while it's connected, and after missed for the read ones settled while it was gone.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "missed_settled" },
+        "items": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "required": ["id", "settled"],
+            "additionalProperties": false,
+            "properties": { "id": { "type": "integer", "minimum": 1 }, "settled": { "$ref": "#/$defs/settled" } }
+          }
+        }
+      }
+    },
+    "missed": {
+      "description": "Hub: what Kiko said while this phone wasn't there to hear it (not connected, or away), not read yet, oldest first, the newest 50 at most; one that no longer needs you carries settled. Sent right after welcome, and in answer to presence back; empty when there's nothing.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "missed" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/missedItem" }, "maxItems": 50 }
+      }
+    },
+    "missed_line": {
+      "description": "Hub, to a phone connected but away (presence away: its app in the background or the phone locked): one line just kept for it as missed, as it's kept, so an app still running there can post a notification. Not sent to a phone in front (it heard it), one that hasn't said where it is yet, or one not connected (it gets missed as it comes back). The same line still comes in missed. An optional addition to version 1: an app that doesn't know it ignores it.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "item"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "missed_line" },
+        "item": { "$ref": "#/$defs/missedItem" },
+        "quiet": {
+          "description": "True while someone is at the Mac (its keyboard or mouse used in the last 2 minutes, its screen unlocked and awake): the phone keeps the line (its list, its badge) but posts no notification. Left out otherwise. An optional addition to version 1: an app that doesn't know it notifies as before.",
+          "const": true
+        }
+      }
+    },
+    "talk_status": {
+      "description": "Hub, to the phone that said or typed it (a talk_start or type with a talkId): what became of those words, as it happens. heard: the transcript is ready (text: your words, for a press); routed: where they're going (sessionId and name, or both null: Kiko itself); held: they wait before going in (detail says for what); delivered: in the session (text: the words that went in; queued: typed while it was busy, so it takes them once it finishes); started: Claude began the turn with them; replied: that turn is over, its reply is ready (sent at the session's Stop; until then the phone shows a reply is owed); answered: Kiko itself dealt with them (they went to the app, not a session); failed: nothing was sent (detail: why, short). Stages only move forward; failed, answered and replied end it (an older hub ends at started). replied was added later in version 1: a phone ignores a stage it doesn't know. A phone that reconnects gets each recent talk's latest again. An optional addition to version 1: an app that doesn't know it ignores it.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "talkId", "stage"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "talk_status" },
+        "talkId": { "$ref": "#/$defs/talkId" },
+        "stage": { "enum": ["heard", "routed", "held", "delivered", "started", "replied", "answered", "failed"] },
+        "sessionId": { "$ref": "#/$defs/optionalSessionId" },
+        "name": { "type": ["string", "null"], "maxLength": 200 },
+        "text": { "type": "string", "maxLength": 4000 },
+        "detail": { "type": "string", "maxLength": 300 },
+        "queued": { "type": "boolean" }
+      }
+    },
+    "speak": {
+      "description": "Hub, to phones that asked for audio: a line for the phone to say itself (AVSpeechSynthesizer), when the Mac's voice is the macOS one, which plays by itself and can't be streamed.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "speak" },
+        "text": { "type": "string", "maxLength": 8000 },
+        "line": {
+          "description": "Optional: the line's number (voice_marks), whose words' places in text came just before in a voice_marks: the phone's read-along follows its synthesizer's word callbacks through them. Left out by older hubs.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "voice_marks": {
+      "description": "Hub, to phones that asked for audio: when the words of a line being said are said, for the phone's read-along (its words grey, each turning white as it's said). Optional and backward compatible: an app that doesn't know it ignores it. `line` numbers each line said (one spoken reply, or one line of the app's). With `sync`, sent in order with the voice, just before the audio it's about: the next voice audio this connection gets, `offset` samples (24 kHz) into it, is sample `at` of the line; sent at each line's start and again whenever what follows doesn't carry on from what came before (a gap, an Opus packet padded at a pause, a phone that came mid-line). With `words`, sent as they're known (before or after the audio they're about): each word by its place `i` among the line's written words (its text, as shown, split on white space; `text` is that word, to check against), with `start` and `end` in samples from the line's start; `exact` when the voice said when (Cartesia), false when estimated from the audio (Pocket: each sentence's audio exactly, the words within it estimated and given a little late rather than early). For the macOS voice, which the phone says itself, the words carry `from` and `to` instead: UTF-16 offsets into the speak text that follows, which is respelled for the voice (nginx as \"engine-x\"), so a written word can be several said ones. A phone with nothing to go on for a line shows it in one colour.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "line"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "voice_marks" },
+        "line": { "type": "integer", "minimum": 1 },
+        "sync": {
+          "type": "object",
+          "required": ["at", "offset"],
+          "additionalProperties": false,
+          "properties": {
+            "at": { "type": "integer", "minimum": 0 },
+            "offset": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "words": {
+          "type": "array",
+          "maxItems": 2000,
+          "items": {
+            "type": "object",
+            "required": ["i", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "i": { "type": "integer", "minimum": 0 },
+              "text": { "type": "string", "maxLength": 8000 },
+              "start": { "type": "integer", "minimum": 0 },
+              "end": { "type": "integer", "minimum": 0 },
+              "from": { "type": "integer", "minimum": 0 },
+              "to": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "exact": { "type": "boolean" }
+      }
+    },
+    "audio_codec": {
+      "description": "Hub, in answer to audio_codecs: the codec the audio goes in, both ways, from now on. pcm: base64 in JSON (talk_audio, audio), as before. opus: binary frames (protocol/README.md, Opus): the phone's presses from its next one on, the hub's voice from its next frame; cues stay audio in JSON.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "codec"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "audio_codec" },
+        "codec": { "enum": ["pcm", "opus"] }
+      }
+    },
+    "new_session_options": {
+      "description": "Hub, in answer to get_new_session_options: what the Mac's own New session picker offers. projects: where sessions have run and the projects root's folders, newest first (folder: its path; name; detail: the folder it's in, ~ for home). root: where a new project is made (~ for home), null when there's nowhere set. harnesses: the agents a session can start in now (connected), the main one first; one with folders starts only in those (T3 Code: its own projects, while it's open); canName: whether a session started in it can be named as it starts (new_session name), missing from an older hub, which takes no name. selected: the one preselected (the run's, the last used, or the setting); why: a few words on why (\"last used\"), missing for none.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "projects", "root", "harnesses", "selected"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "new_session_options" },
+        "projects": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "required": ["folder", "name", "detail"],
+            "additionalProperties": false,
+            "properties": {
+              "folder": { "type": "string", "minLength": 1, "maxLength": 1000 },
+              "name": { "type": "string", "maxLength": 200 },
+              "detail": { "type": "string", "maxLength": 1000 }
+            }
+          }
+        },
+        "root": { "type": ["string", "null"], "maxLength": 1000 },
+        "harnesses": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "required": ["id", "name"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "minLength": 1, "maxLength": 40 },
+              "name": { "type": "string", "maxLength": 40 },
+              "folders": { "type": "array", "items": { "type": "string", "maxLength": 1000 }, "maxItems": 500 },
+              "canName": { "type": "boolean" }
+            }
+          }
+        },
+        "selected": { "type": ["string", "null"], "maxLength": 40 },
+        "why": { "type": "string", "maxLength": 40 }
+      }
+    },
+    "new_session_status": {
+      "description": "Hub, to the phone that sent new_session (its requestId): heard (a spoken first message's transcript, text, before it goes in), started (sessionId: the new session's id as listed, starting-… while it starts; name; text: the first message that went in; message: what the Mac says of it, \"Making pixel in git and opening it.\"), or failed (message: why, in the Mac's words: the folder gone, the agent not connected, no terminal to open it in, nothing heard). started and failed end it.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "requestId", "stage"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "new_session_status" },
+        "requestId": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "stage": { "enum": ["heard", "started", "failed"] },
+        "sessionId": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "maxLength": 200 },
+        "text": { "type": "string", "maxLength": 4000 },
+        "message": { "type": "string", "maxLength": 1000 }
+      }
+    },
+    "history_page": {
+      "description": "Hub, in answer to history_before: the session's items that started before `before`, oldest first (the newest page that fits: 60 at most), as in history; more: there are earlier ones still (ask again before the first of these). Empty, more false, for a session whose agent keeps no transcript to page through. In answer to a cursor: the newest turns before it within the budget, with ids, long ones cut; cursor as asked, and next: the cursor for the page before this one (when more).",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "sessionId", "before", "items", "more"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "history_page" },
+        "sessionId": { "$ref": "#/$defs/id" },
+        "before": { "type": "string", "maxLength": 40 },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/historyItem" }, "maxItems": 80 },
+        "more": { "type": "boolean" },
+        "cursor": { "description": "The cursor asked before. Optional: only in answer to one.", "type": "string", "maxLength": 200 },
+        "next": { "description": "The cursor for the page before this one: its first item's id. Optional: only when more, in answer to a cursor.", "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "full_text": {
+      "description": "Hub, in answer to show_full: a message's whole text (text), or a step's output (detail) and diff, read again from its agent's record with far more kept (60,000 characters of text; 400 lines or 24,000 characters of output; 800 lines or 48,000 characters of diff). cut: even so, cut short (the rest is on the Mac). missing: the item isn't there any more (its record written again): nothing else.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "sessionId", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "full_text" },
+        "sessionId": { "$ref": "#/$defs/id" },
+        "id": { "$ref": "#/$defs/itemId" },
+        "step": { "type": "integer", "minimum": 0, "maximum": 39 },
+        "text": { "type": "string", "maxLength": 60000 },
+        "detail": { "type": "string", "maxLength": 24000 },
+        "diff": { "type": "string", "maxLength": 60000 },
+        "cut": { "const": true },
+        "missing": { "const": true }
+      }
+    },
+    "session_note": {
+      "description": "Hub, to the phone that asked (session_action): what came of it, in words to show (\"Renamed pixie to docs.\", \"pixie is busy, so I'll rename it to docs when it finishes.\", \"I couldn't stop pixie: …\"), as the Mac's window notes it.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "sessionId", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "session_note" },
+        "sessionId": { "$ref": "#/$defs/id" },
+        "text": { "type": "string", "maxLength": 1000 }
+      }
+    },
+    "relay_paired": {
+      "description": "Hub, to the phone that sent relay_pair: what it needs to reach the Mac through the relay. url and room: where (also the relay entry in addresses, from now on). macKey: the Mac's static X25519 public key, the tunnel's handshake is to it. signingKey: the Mac's Ed25519 public key, which the room is named after (SHA-256, the first 16 bytes, hex: the phone may check it). credential: 32 random bytes, sent only this once; the phone keeps it (Keychain) and presents it to join the room; the hub keeps only its hash.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "url", "room", "macKey", "signingKey", "credential"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "relay_paired" },
+        "url": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^wss?://" },
+        "room": { "$ref": "#/$defs/room" },
+        "macKey": { "$ref": "#/$defs/key32" },
+        "signingKey": { "$ref": "#/$defs/key32" },
+        "credential": { "$ref": "#/$defs/key32" },
+        "addresses": { "$ref": "#/$defs/addresses" }
+      }
+    },
+    "hands_free_state": {
+      "description": "Hub, to a phone that sent hands_free: how its listener on the Mac is. on: it listens for the name now (false: off, or it couldn't start: error says why). by: woken (name: the name was heard; reply: words in a session's reply window), so the phone sends everything its mic hears (through the cue) until by is null again; null while only listening. name: the name it listens for (the Mac's spoken name setting), for 'Listening for Kiko'. talkId: the talk the words it heard became, sent as they're taken: talk_status follows for it as for a press.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "on", "by"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "hands_free_state" },
+        "on": { "type": "boolean" },
+        "by": { "enum": ["name", "reply", null] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "talkId": { "$ref": "#/$defs/talkId" },
+        "error": { "type": "string", "maxLength": 2000 }
+      }
+    },
+    "account": {
+      "description": "Hub, while Kiko accounts are on (off: never sent): the plan and trial status of the Mac's Kiko account, for the phone to show (it has no account of its own, and nothing is bought or signed into on it). To every phone right after welcome, then to all of them when it changes (looked at each minute). Nothing private: no email, no token. plan: none (no plan: never a trial, or signed out), trial (a free trial, running or ended: ended says which) or pro. endsAt: when the trial ends or ended (ms since 1970; the phone works out the days left from it); usedPct: the share of the trial's usage used, or for pro of this month's allowance (0 to 100). ended and endedWhy (time: its days ran out; cap: its usage was used up), for a trial. ownKey: the Mac runs Kiko's AI on your own OpenRouter key, so no trial or plan is in use (your key always wins). signedIn: the Mac is signed in to its Kiko account. For pro once it's paid for: renewsAt (when it renews), cancelAt (when it ends, cancelled; null unless it is) and paymentFailed (null, or graceEndsAt: when Pro stops unless the card is updated), ms since 1970; billingOnMac: Pro is managed on the Mac (kiko account billing), sent once Pro is paid for. phoneApp, while Kiko Pro is on sale: whether the plan includes the iPhone app (included, or needs_pro: the next connect gets plan_required; one connected now isn't cut off). phoneAppReason, with phoneApp needs_pro: why (planReason), so the phone names it and its fix before it is ever refused. With ownKey and plan pro, Pro is still shown (its allowance isn't used while your own key is). Each is optional: an app that doesn't know them shows Pro as before. An optional addition to version 1: an app that doesn't know it ignores it, and a hub without accounts never sends it.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "signedIn", "ownKey", "plan"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "account" },
+        "signedIn": { "type": "boolean" },
+        "ownKey": { "type": "boolean" },
+        "plan": { "enum": ["none", "trial", "pro"] },
+        "endsAt": { "type": ["integer", "null"], "minimum": 0 },
+        "usedPct": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+        "ended": { "type": "boolean" },
+        "endedWhy": { "enum": ["time", "cap", null] },
+        "renewsAt": { "type": ["integer", "null"], "minimum": 0 },
+        "cancelAt": { "type": ["integer", "null"], "minimum": 0 },
+        "paymentFailed": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["graceEndsAt"],
+              "additionalProperties": false,
+              "properties": { "graceEndsAt": { "type": ["integer", "null"], "minimum": 0 } }
+            }
+          ]
+        },
+        "billingOnMac": { "type": "boolean" },
+        "phoneApp": { "enum": ["included", "needs_pro"] },
+        "phoneAppReason": { "$ref": "#/$defs/planReason" }
+      }
+    },
+    "plan_required": {
+      "description": "Hub, while Kiko Pro is on sale on the Mac: this phone was turned away at connect (hello or pair) because the Mac's plan doesn't include the iPhone app (it comes with Kiko Pro or the free trial). Then the connection closes (4014 plan_required), unless signIn (below). Not an error: the app shows a calm notice naming the reason and the one thing that fixes it, keeps its pairing and tries again by itself. trialAvailable: the free trial could still start on the Mac's account. reason (optional: absent from an older hub, and from the relay): why, planReason. signIn (only with reason mac_signed_out, only after hello, never pair: a phone already paired): the Mac can be signed in from this phone; a phone that can show it answers sign_in within 3 seconds and the connection stays open for it (mac_sign_in follows), and one that doesn't (an older app) is let go 3 seconds later with 4014 as before. A phone already connected is never cut off: the next connect is refused. Only ever sent instead of welcome. An optional addition to version 1: an older app sees only a connection that closed.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "trialAvailable"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "plan_required" },
+        "trialAvailable": { "type": "boolean" },
+        "reason": { "$ref": "#/$defs/planReason" },
+        "signIn": { "description": "The Mac can be signed in from this phone: answer sign_in within 3 seconds to keep this connection for it.", "const": true }
+      }
+    },
+    "planReason": {
+      "description": "Why the Mac's plan doesn't include the iPhone app, and so what fixes it (README.md, The iPhone app and the plan): mac_signed_out (the Mac isn't signed in to its Kiko account: sign it in, from the phone or on the Mac), no_plan (signed in, with no trial or Pro: trialAvailable says whether the free trial could still start), trial_ended (the free trial ended), pro_ended (Kiko Pro ended: cancelled and past its end), payment_failed_grace_over (Kiko Pro stopped after a failed payment's grace ran out). An app that meets a reason it doesn't know shows the general notice.",
+      "enum": ["mac_signed_out", "no_plan", "trial_ended", "pro_ended", "payment_failed_grace_over"]
+    },
+    "mac_sign_in": {
+      "description": "Hub, on a connection refused with plan_required { reason: mac_signed_out, signIn: true } once the phone said sign_in: the Mac's sign-in, started for this phone (the device code flow, RFC 8628, the one kiko login runs, on the Mac). state starting: asking the account server for a code. code: url (the approval page with the code in it, verification_uri_complete: https://account.kiko.sh/device?user_code=WDJB-MJHT, to open in the browser), code (the one-time code, XXXX-XXXX, which the Mac shows too, to check against) and expiresAt (when it runs out, ms since 1970); sent again with a new code when one runs out while the phone is still here. signed_in: the Mac is signed in now (from the phone's approval, or on the Mac); the hub then closes the connection with 4015 signed_in and the phone connects again at once, as any phone (a plan that still doesn't include it is refused then, with its own reason). failed: why (denied: turned down in the browser; unreachable: the account server couldn't be reached; refused: it wouldn't start one; no_keychain: the Mac has nowhere to keep a sign-in; error: anything else); the connection stays, and sign_in tries again. Nothing private: no email, no token. The connection is held 30 minutes at most, then closed with 4014.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "state"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "mac_sign_in" },
+        "state": { "enum": ["starting", "code", "signed_in", "failed"] },
+        "url": { "type": "string", "minLength": 1, "maxLength": 500, "pattern": "^https?://" },
+        "code": { "type": "string", "minLength": 4, "maxLength": 20 },
+        "expiresAt": { "type": "integer", "minimum": 0 },
+        "why": { "enum": ["denied", "unreachable", "refused", "no_keychain", "error"] }
+      }
+    },
+    "error": {
+      "description": "Hub: something the phone asked for didn't happen, or (nothing_plays) something it should know: nothing plays the spoken output any more (the Mac's Play on this Mac is off and no phone has play_on_phone on), sent once as that starts. version, unauthorized, bad_code, pairing_closed, too_many_attempts, auth_timeout, stale_key, unknown_phone, qr_used and qr_expired close the connection. On a direct connection, version, bad_code, pairing_closed, too_many_attempts, stale_key, unknown_phone, qr_used and qr_expired can come in the clear, before the tunnel is open (README.md, Encrypted at home): the phone shows one but changes nothing for it; unauthorized (forget the token and pair again) counts only inside the tunnel. stale_key: the phone's key for this Mac isn't this Mac's now; it drops it and opens with its token next. unknown_phone: a token handshake for a phone this Mac doesn't know, or has a key for: pair again. qr_used and qr_expired (in the clear, or as an answer to pair): the QR code scanned has paired a phone already, or has expired or was closed on the Mac: show a new one there.",
+      "x-from": "hub",
+      "type": "object",
+      "required": ["v", "type", "code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "v": { "$ref": "#/$defs/v" },
+        "type": { "const": "error" },
+        "code": {
+          "enum": [
+            "version",
+            "invalid",
+            "unauthorized",
+            "auth_timeout",
+            "bad_code",
+            "pairing_closed",
+            "too_many_attempts",
+            "busy",
+            "not_talking",
+            "no_session",
+            "prompt_gone",
+            "bad_answers",
+            "nothing_plays",
+            "internal",
+            "stale_key",
+            "unknown_phone",
+            "qr_used",
+            "qr_expired"
+          ]
+        },
+        "message": { "type": "string", "maxLength": 1000 }
+      }
+    }
+  }
+}

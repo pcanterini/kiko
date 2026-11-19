@@ -1,0 +1,22 @@
+# gitleaks over the public snapshot (pnpm public:snapshot): the default rules, minus known
+# placeholders. Nothing here is a real key: the relay vectors and protocol examples are derived from
+# SHA-256('kiko vector <label>') (scripts/relay-vectors.ts), and the test values are made up.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Relay test vectors and protocol examples"
+paths = [
+  '''^protocol/relay-vectors\.json$''',
+  '''^protocol/examples/[^/]+\.json$''',
+  '''^scripts/relay-vectors\.ts$''',
+]
+
+[[allowlists]]
+description = "Made-up test values"
+regexTarget = "line"
+regexes = [
+  '''"sk-or-v1-0123456789abcdef"''',
+  '''"Abc123_-xyzXYZ789abcDEFg"''',
+  '''`KIKO_KEYCHAIN=off`''',
+]

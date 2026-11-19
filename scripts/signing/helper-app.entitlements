@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The helper app's own executable (native/macos/app/host.swift; scripts/build-helper-app.sh signs
+  the bundle with these). audio-input: as for the mic helpers (audio-input.entitlements), it's the
+  responsible process their audio is checked against. apple-events: the AppleScripts it runs for
+  `kiko` (typing into Ghostty, opening Kiko's window in Ghostty, iTerm or Terminal: host.swift's
+  op osascript) send Apple Events as this app; under the hardened runtime, without this macOS
+  refuses them (-1743) without ever asking. Its reason is Info.plist's NSAppleEventsUsageDescription.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+  <key>com.apple.security.automation.apple-events</key>
+  <true/>
+</dict>
+</plist>

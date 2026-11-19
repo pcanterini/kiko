@@ -1,0 +1,1 @@
+{ "v": 1, "type": "sessions", "sessions": [{ "id": "4c9e7b21-0a3d-4f58-b6e2-9d1a7c3f5e80", "name": "clipkit", "folder": "/Users/me/git/clipkit", "status": "working", "lastActivity": 1793210500000, "summary": "Looking at the failing tests.", "desktop": false, "agent": "Codex", "startedAs": "starting-3fa1c2d4" }] }

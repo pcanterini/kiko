@@ -1,0 +1,2 @@
+# What wrangler keeps while a test runs the Worker locally (its bundle, empty state folders).
+.wrangler/

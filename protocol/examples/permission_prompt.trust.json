@@ -1,0 +1,13 @@
+{
+  "v": 1,
+  "type": "permission_prompt",
+  "prompt": {
+    "promptId": "5d0e6f7a-8b9c-4d1e-a2f3-b4c5d6e7f8a9",
+    "sessionId": "starting-3fa2c1d0",
+    "name": "Dozer",
+    "what": "trust its folder ~/Kiko/scratch/2026-10-29-dozer",
+    "risky": false,
+    "remainingMs": 19600,
+    "folder": "~/Kiko/scratch/2026-10-29-dozer"
+  }
+}

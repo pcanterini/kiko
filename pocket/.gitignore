@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+server.log
+# Pocket's own uv (its Python and cache in it) and model, fetched by setup.sh and its first start, and the
+# background download's files (src/core/pocket-prep.ts), in a checkout.
+pocket-uv/
+pocket-uv-download.*/
+pocket-hf/
+pocket-prep.*

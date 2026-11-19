@@ -1,0 +1,1 @@
+{ "v": 1, "type": "welcome", "hubName": "Kiko on Test-Mac", "phoneId": "p-5d2e9f", "playOnPhone": true, "playOnMac": false, "versions": [1], "talkStatus": true, "codecs": ["opus"], "chat": true, "handsFree": true }
