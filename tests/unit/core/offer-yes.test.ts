@@ -172,3 +172,133 @@ describe("a no drops the words; new words go where they would have", () => {
     assert.deepEqual(outcomes, [{ action: "say", text: "It's 2:50 pm." }]);
   });
 });
+
+// ── An answer to the offer that names another session ────────────────────────────────────────────
+// The case, with made-up names: words naming no session; the router offered api ("Want me to send
+// that to api?") and the app held them. The answer, "this to Rowan", was heard as "Thus, too, Rowan.":
+// it picked nothing in code, the router's pass_on of it to Rowan wasn't read as a pick (onlyPicks
+// didn't know "thus", "too"), so the app let the words offered go and typed the answer into Rowan.
+const R = makeWorld([
+  { name: "api", title: "Retry limits", status: "idle", asked: "Where does the retry limit live now?", said: "It's hard-coded in the client for now." },
+  { name: "Rowan", folder: "rowan-platform", given: "Rowan", status: "idle", asked: "Is the settings page done?", said: "Yes, the settings page is done." },
+  { name: "kiko", folder: "kiko", given: "Kiko project", status: "idle", asked: "Fix the overlay.", said: "The overlay is fixed." },
+]);
+const RS = (name: string) => R.byName.get(name.toLowerCase())!;
+const HELD = "Can we move the retry limit into the settings file?";
+const API_OFFER: Question = { text: HELD, offered: [RS("api").sessionId], line: "Want me to send that to api?", offer: true };
+
+async function redirect(text: string, opts: Stub = {}) {
+  const seen = { router: 0 };
+  const deps: DecideDeps = {
+    utterance: async () => ({ audience: RS("api"), audienceConfidence: 0.5, intent: "message", intentConfidence: 1, appParts: 0, model: "test", costUsd: 0, ms: 1 }),
+    approval: null,
+    route: async () => {
+      seen.router++;
+      return { text: opts.says ?? "", actions: opts.router?.(RS) ?? [], claimsAction: false, usage: { input_tokens: 0, output_tokens: 0 }, costUsd: 0 };
+    },
+    trim: null,
+    clean: null,
+  };
+  const state: DecideState = {
+    text,
+    sessions: R.sessions,
+    notes: R.notes,
+    recent: [`you → app: ${HELD}`, `app said: ${API_OFFER.line}`],
+    waiting: null,
+    justSpoke: null,
+    lastId: null,
+    appAsked: true,
+    lastSent: null,
+    lastRepeat: false,
+    voiceCan: "messages",
+    classifierMinConfidence: 0.75,
+    question: API_OFFER,
+  };
+  const d = await decide(state, deps);
+  return { d, outcomes: outcomesOf(d, state).map(({ sessionId: _id, ...o }) => o), seen };
+}
+
+const HELD_TO = (to: string) => ({ action: "send", to, text: HELD, via: "terminal" });
+
+describe("an answer to the offer naming another session sends the words offered there, never the answer", () => {
+  test("read in code: the name with only direction or filler words, misheard ones too", async () => {
+    for (const said of ["This to Rowan.", "No, to Rowan.", "Send it to Rowan.", "Rowan.", "To Rowan instead.", "Actually, Rowan.", "Thus, too, Rowan.", "This two Rowan.", "Tue Rowan."]) {
+      const { d, outcomes, seen } = await redirect(said);
+      assert.equal(seen.router, 0, said);
+      assert.deepEqual(outcomes, [HELD_TO("Rowan")], said);
+      assert.equal(d.question?.kind, "answered", said);
+    }
+  });
+
+  test("the session offered, said the same misheard way: the words go there", async () => {
+    for (const said of ["Thus, too, api.", "This two api."]) {
+      const { outcomes } = await redirect(said);
+      assert.deepEqual(outcomes, [HELD_TO("api")], said);
+    }
+  });
+
+  test("the router's pass_on of a short answer the code didn't read: the words offered go (redirectsAsked)", async () => {
+    for (const said of ["Dus, tew, Rowan.", "Thus to Rowan, then.", "Sand it Rowan."]) {
+      const { outcomes, seen } = await redirect(said, { router: (s) => [{ name: "pass_on", session: s("Rowan") }] });
+      assert.equal(seen.router, 1, said);
+      assert.deepEqual(outcomes, [HELD_TO("Rowan")], said);
+    }
+  });
+
+  test("the router checking the name it heard (confirm_session): the words offered go, not the answer", async () => {
+    const { outcomes } = await redirect("Dus, tew, Rowan.", { router: (s) => [{ name: "confirm_session", session: s("Rowan"), heard: "Rowan", message: "" }] });
+    assert.deepEqual(outcomes, [HELD_TO("Rowan")]);
+  });
+
+  test("a name said only loosely and checked: the check is about the words offered", async () => {
+    const { d } = await redirect("Thus, too, Rowen.", { router: (s) => [{ name: "confirm_session", session: s("Rowan"), heard: "Rowen", message: "" }] });
+    assert.equal(d.question?.kind, "asked");
+    assert.equal(d.question?.kind === "asked" && d.question.question.text, HELD);
+  });
+
+  test("the router offering the named session instead: the offer is about the words offered, not the answer", async () => {
+    const { d, outcomes } = await redirect("Dus, tew, Rowan.", { router: (s) => [{ name: "offer_session", session: s("Rowan") }] });
+    assert.deepEqual(outcomes, [{ action: "ask_user", text: "Want me to send that to Rowan?" }]);
+    assert.equal(d.question?.kind === "asked" && d.question.question.text, HELD);
+  });
+
+  test("the router's resend_to of it: the words offered go there", async () => {
+    const { outcomes } = await redirect("Dus, tew, Rowan.", { router: (s) => [{ name: "resend_to", session: s("Rowan") }] });
+    assert.deepEqual(outcomes, [HELD_TO("Rowan")]);
+  });
+});
+
+describe("not a redirect: a real request, a no, other words", () => {
+  test("'Rowan, run the tests.': new words for Rowan, as said; the words offered don't go", async () => {
+    const { d, outcomes, seen } = await redirect("Rowan, run the tests.", { router: (s) => [{ name: "pass_on", session: s("Rowan") }] });
+    assert.equal(seen.router, 1, "the router reads a request of its own");
+    assert.equal(outcomes.length, 1);
+    assert.equal(outcomes[0].action, "send");
+    assert.equal((outcomes[0] as { to: string }).to, "Rowan");
+    assert.match((outcomes[0] as { text: string }).text, /run the tests/i);
+    assert.doesNotMatch((outcomes[0] as { text: string }).text, /retry limit/i);
+    assert.notEqual(d.question?.kind, "answered");
+  });
+
+  test("short, but with a request verb: new words", async () => {
+    for (const said of ["Rowan, check it.", "Fix Rowan."]) {
+      const { outcomes } = await redirect(said, { router: (s) => [{ name: "pass_on", session: s("Rowan") }] });
+      assert.equal(outcomes.length, 1, said);
+      assert.doesNotMatch((outcomes[0] as { text: string }).text, /retry limit/i, said);
+    }
+  });
+
+  test("'No.': nothing sent", async () => {
+    const { d, outcomes } = await redirect("No.");
+    assert.deepEqual(d.question, { kind: "cancelled" });
+    assert.deepEqual(outcomes, [{ action: "say", text: "Okay, not sent." }]);
+  });
+
+  test("words naming no session, passed on by the router: they go as said, the words offered don't", async () => {
+    const { outcomes } = await redirect("Too slow, the build is too slow.", { router: (s) => [{ name: "pass_on", session: s("Rowan") }] });
+    assert.deepEqual(
+      outcomes.map(({ unsure: _u, ...o }) => o),
+      [{ action: "send", to: "Rowan", text: "Too slow, the build is too slow.", via: "terminal" }],
+    );
+  });
+});

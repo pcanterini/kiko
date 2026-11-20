@@ -1134,7 +1134,8 @@ async function guard(s: DecideState, deps: DecideDeps, out: Decision, action: Ro
       // An answer to "which session?" that only picks one (the router told to pass_on it, or reading
       // the answer as words for that session): what goes is what the question was about, never the
       // answer: otherwise an answer like "It should go to <the session>." is typed into that session.
-      if (s.question && onlyPicks(s, s.question, action.session)) {
+      // Any session, not only one the app named: "Thus, too, Rowan." ("this to Rowan") to "Want me to send that to api?".
+      if (s.question && (onlyPicks(s, s.question, action.session) || redirectsAsked(s, action.session))) {
         out.question = { kind: "answered", sessionId: action.session.sessionId, how: "router" };
         return unsure(s, { type: "send", session: { sessionId: action.session.sessionId, cwd: action.session.cwd }, text: s.question.text }, "router pass_on");
       }
@@ -1150,6 +1151,19 @@ async function guard(s: DecideState, deps: DecideDeps, out: Decision, action: Ro
       // the question's (offering only Lacy), sent there on a yes, to another one if that's named
       // instead (answerQuestion), never retyped. The name said is cut as a session's name would be.
       const to = action.session;
+      // An answer to the app's question or offer that names this session and says only where the
+      // words go ("Dus, tew, Rowan."): the router checking the name it heard sends the words asked
+      // about, as its pass_on would; one that names it only loosely is checked about those words.
+      if (s.question && redirectsAsked(s, to)) {
+        out.question = { kind: "answered", sessionId: to.sessionId, how: "router" };
+        return unsure(s, { type: "send", session: { sessionId: to.sessionId, cwd: to.cwd }, text: s.question.text }, "router confirm_session");
+      }
+      if (s.question && (onlyPicks(s, s.question, to) || redirectsAsked(s, to, action.heard))) {
+        const line = `Did you mean ${spoken(sessionName(to))}?`;
+        out.question = { kind: "asked", question: { text: s.question.text, offered: [to.sessionId], line } };
+        out.guess = { heard: action.heard, sessionId: to.sessionId, how: "asked", score: nameScore(action.heard, to) };
+        return { type: "say", text: line, why: "confirm_name" };
+      }
       const said = action.heard ? addressedTo([{ ...to, givenName: action.heard, title: "" }], text) : null;
       const checked = action.message ? await routerWordsOr(s, deps, out, to, action.message, appParts, "router confirm_session", said) : null;
       const words = typeof checked === "string" ? checked : (checked ?? (await send(s, deps, out, to, said, appParts))).text;
@@ -1165,7 +1179,10 @@ async function guard(s: DecideState, deps: DecideDeps, out: Decision, action: Ro
       // the yes itself. The case: "I can pass your question along to it if you want."
       // said in the router's own words, and "Yes, pass it to Bobby." was what reached Bobby.
       const to = action.session;
-      const words = (await send(s, deps, out, to, addressedTo([to], text) ?? heardPhrase(out, to), appParts)).text;
+      // Offered again in answer to the app's question or offer, for words that only pick it ("Dus,
+      // tew, Rowan."): the offer is about the words asked about, never the answer.
+      const held = s.question && (onlyPicks(s, s.question, to) || redirectsAsked(s, to)) ? s.question.text : null;
+      const words = held ?? (await send(s, deps, out, to, addressedTo([to], text) ?? heardPhrase(out, to), appParts)).text;
       const line = action.ask ? `Want me to ask ${spoken(sessionName(to))}?` : `Want me to send that to ${spoken(sessionName(to))}?`;
       out.question = { kind: "asked", question: { text: words, offered: [to.sessionId], line, offer: true } };
       return { type: "say", text: line, why: "offer_session" };
@@ -1722,7 +1739,7 @@ const PICK_WORDS = new Set(
   (
     "uh um umm er erm ah oh hmm okay ok so yeah yes yep yup no well actually just like i i'd id i'm im think guess say said mean meant " +
     "it it's its that that's this one ones session sessions should would will can go goes going went send sent give put pass move " +
-    "to for in into on the a an please thanks thank you was is be probably maybe definitely sure"
+    "to for in into on the a an please thanks thank you was is be probably maybe definitely sure instead"
   ).split(" "),
 );
 // "The second one", "the last one": by the question's order.
@@ -1735,6 +1752,19 @@ const CHANGES_PICK = /\b(?:no|nope|wait|never ?mind|scratch that|cancel|i mean|i
 const SESSION_WORDS = new Set("session sessions instance agent project terminal window thread claude code".split(" "));
 // Said around a pick the router read: "not Lacy, the other one", "Kiko instead".
 const ROUTER_PICK_WORDS = new Set("not other instead rather either".split(" "));
+// "This to Rowan", "send to Rowan", "to Rowan" as speech-to-text hears it: "Thus, too, Rowan.", "This
+// two Rowan.". Before a name in an answer to "which session?", only the direction; never a number of
+// a session the question offered (byNumber is read first).
+const MISHEARD_TO = new Set("thus too two tue tu tew dis".split(" "));
+// A word of an answer the router read as a pick that may be one of those, heard some other way: as
+// close to one of these (a letter off). Never with one of the verbs that make a request of their own.
+const DIRECTION_WORDS = "to this send so the that there thus".split(" ");
+const REQUEST_VERBS = new Set(
+  (
+    "run check fix test tests make build add look tell ask show stop start open read write deploy push commit merge update " +
+    "change try find review explain help rename delete remove create use keep call list describe pull get set see let do"
+  ).split(" "),
+);
 
 /** The one session offered whose number a word is ("two", "2"); "one" is never a number ("the second one"). */
 function byNumber(offered: Session[], word: string): Session | null {
@@ -1849,6 +1879,8 @@ function pickIn(s: DecideState, q: Question, said: string): Pick | null {
       end = at;
       continue;
     }
+    // "Thus, too, Rowan.": "this to" misheard, before the name.
+    if (!sets.length && MISHEARD_TO.has(word)) continue;
     // "The lacy session": with a name, only part of it.
     if (sets.length && SESSION_WORDS.has(word)) continue;
     break;
@@ -1913,6 +1945,8 @@ function onlyPicks(s: DecideState, q: Question, picked: Session): boolean {
       // "Yes, and it's to Rowan.", "pass it along to Rowan": a yes to the app's offer, and how it's said.
       OFFER_YES.has(word) ||
       OFFER_FILLER.has(word) ||
+      // "Thus, too, Rowan.": "this to Rowan", misheard.
+      MISHEARD_TO.has(word) ||
       ORDINALS[word] !== undefined ||
       Boolean(byNumber(offered, word)) ||
       title.includes(heard) ||
@@ -1922,6 +1956,45 @@ function onlyPicks(s: DecideState, q: Question, picked: Session): boolean {
   });
   const onlyNo = tokens.length > 0 && tokens.every(({ word }) => isPickWord(word)) && tokens.some(({ word }) => word === "no");
   return explained && !onlyNo;
+}
+
+/**
+ * The router's pass_on (or confirm_session) of a short answer to "which session?" or an offer that names `picked`, any of
+ * your sessions (not only one the app named), and otherwise says only where the words go, some of it
+ * misheard ("Dus, tew, Rowan." for "this to Rowan"): it sends the words asked about there, never the
+ * answer. Read as that when the answer is at most five words; it names `picked` and no other session;
+ * and each of at most two words onlyPicks doesn't explain is a letter or so off a direction word
+ * ("to", "this", "send"…), never a request verb ("run", "check"…). "Rowan, run the tests" is new
+ * words for Rowan. `heardAs`: the name the router heard for `picked` ("Rowen"), naming it too.
+ */
+function redirectsAsked(s: DecideState, picked: Session, heardAs = ""): boolean {
+  const tokens = tokensOf(joinSpelled(s.text));
+  if (!tokens.length || tokens.length > 5) return false;
+  const ownWords = (x: Session) => {
+    const all = nameWords(x);
+    const own = all.filter((w) => !SESSION_WORDS.has(w));
+    return own.length ? own : all;
+  };
+  const mine = ownWords(picked);
+  // The name the router heard for it ("Rowen"): naming it too, loosely.
+  const loose = heardAs ? wordsOf(heardAs).split(" ").filter(Boolean) : [];
+  const others = s.sessions.filter((x) => x !== picked).flatMap((x) => ownWords(x).filter((w) => !mine.includes(w)));
+  let named = false;
+  const unexplained: string[] = [];
+  for (const { word } of tokens) {
+    const heard = asHeard(word);
+    if (others.includes(heard)) return false;
+    if (mine.includes(heard) || loose.includes(word)) {
+      named = true;
+      continue;
+    }
+    if (isPickWord(word) || OFFER_YES.has(word) || OFFER_FILLER.has(word) || MISHEARD_TO.has(word) || SESSION_WORDS.has(word)) continue;
+    unexplained.push(word);
+  }
+  if (!named || unexplained.length > 2) return false;
+  // As said: "dus" for "this", "thus" (a "th" up front heard as "d").
+  const said = (w: string) => sounded(w).replace(/^th/, "d");
+  return unexplained.every((w) => !REQUEST_VERBS.has(w) && DIRECTION_WORDS.some((d) => distance(said(w), said(d)) <= 1));
 }
 
 /**
@@ -1986,6 +2059,9 @@ async function answerQuestion(s: DecideState, deps: DecideDeps, out: Decision, q
     if (!pick) continue;
     // Moved on from: a pick with more to it ("Lacy, run the tests") is new words for that session.
     if (q.told && pick.extra) continue;
+    // A session the app didn't name, with more ("Rowan, run the tests" to "Want me to send that to
+    // api?"): a request of its own, the router's to read; only the name, or with fillers, sends them.
+    if (pick.extra && !q.offered.includes(pick.session.sessionId)) continue;
     let added = pick.extra;
     // The rest of your answer goes as you said it, cleaned up like any words for a session.
     if (added && deps.clean) {

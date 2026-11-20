@@ -2195,6 +2195,94 @@ CASES.push(
   },
 );
 
+// ── An answer to the app's offer naming another session ──────────────────────────────────────────
+// Made up, from an incident (2026-11-20): words naming no session; the router offered api ("Want me
+// to send that to api?") and the app held them. "This to Rowan", heard as "Thus, too, Rowan.", named
+// another session: the router's pass_on to Rowan was right, but the app didn't read it as a pick, let
+// the words offered go and typed the answer into Rowan.
+const API_SESSIONS = (): SessionSpec[] => [
+  {
+    name: "api",
+    title: "Retry limits",
+    status: "idle",
+    activeAgoS: 60,
+    asked: "Where does the retry limit live now?",
+    said: "…It's hard-coded in the client for now: three tries, two seconds apart.",
+  },
+  {
+    name: "Rowan",
+    folder: "rowan-platform",
+    given: "Rowan",
+    status: "idle",
+    activeAgoS: 300,
+    asked: "Is the settings page done?",
+    said: "…Yes, the settings page is done, with the new settings file behind it.",
+  },
+  {
+    name: "mintbox",
+    title: "Store screenshot sizes",
+    status: "idle",
+    activeAgoS: 2880,
+    asked: "Which screenshot sizes does the store still need from us?",
+    said: "…Two sizes are left: the large phone and the tablet.",
+  },
+];
+const API_HELD = "Can we move the retry limit into the settings file?";
+const API_OFFER = "Want me to send that to api?";
+const AFTER_API_OFFER = {
+  sessions: API_SESSIONS(),
+  recent: [`you → app: ${API_HELD}`, `app said: ${API_OFFER}`],
+  lastSent: null,
+  question: { text: API_HELD, offered: ["api"], offer: true },
+};
+const HELD_TO_ROWAN: Match[] = [send("Rowan", { text: /retry limit into the settings file/i }), { action: "ask", to: "Rowan", text: /retry limit/i }];
+// The answer itself, typed into a session.
+const THE_ANSWER: Match[] = [
+  { action: "send", text: /^\W*(?:this|thus|dus|no|send|rowan)\b/i },
+  { action: "ask", text: /^\W*(?:this|thus|dus|no|send|rowan)\b/i },
+];
+const redirectCase = (id: string, say: string, why: string): Case => ({
+  id,
+  tags: ["question", "offer", "offer-redirect", "synthetic"],
+  why,
+  ...AFTER_API_OFFER,
+  say,
+  expect: HELD_TO_ROWAN,
+  mustNot: [...THE_ANSWER, ...reach("api"), ...reach("mintbox")],
+});
+
+CASES.push(
+  redirectCase(
+    "offer-redirect-plain",
+    "This to Rowan.",
+    "Synthetic, from the 2026-11-20 offer incident: after the app's offer of api, 'This to Rowan.' sends the words offered to Rowan, never the answer.",
+  ),
+  redirectCase("offer-redirect-no-instead", "No, send it to Rowan instead.", "Synthetic: a no to the app's offer of api that names Rowan sends the words offered to Rowan."),
+  redirectCase(
+    "offer-redirect-misheard",
+    "Thus, too, Rowan.",
+    "Synthetic, from the 2026-11-20 offer incident: 'this to Rowan' misheard as 'Thus, too, Rowan.' sends the words offered to Rowan, never the answer.",
+  ),
+  redirectCase("offer-redirect-misheard-two", "This two Rowan.", "Synthetic: 'this to Rowan' misheard as 'This two Rowan.' sends the words offered to Rowan."),
+  {
+    ...redirectCase(
+      "offer-redirect-misheard-router",
+      "Dus, tew, Rowan.",
+      "Synthetic: 'this to Rowan' misheard past what the code reads ('Dus, tew, Rowan.'): the router's pick sends the words offered to Rowan, never the answer; or the app asks about sending them there.",
+    ),
+    expect: [...HELD_TO_ROWAN, { action: "ask_user", text: /\bRowan\b/ }],
+  },
+  {
+    id: "offer-redirect-new-request",
+    tags: ["question", "offer", "offer-redirect", "synthetic"],
+    why: "Synthetic: after the app's offer of api, a request of its own naming Rowan ('Rowan, run the tests.') goes to Rowan; nothing goes to api.",
+    ...AFTER_API_OFFER,
+    say: "Rowan, run the tests.",
+    expect: [send("Rowan", { text: /run the tests/i }), { action: "ask", to: "Rowan", text: /tests/i }],
+    mustNot: [{ action: "send", text: /^\W*rowan\b/i }, ...reach("api"), ...reach("mintbox")],
+  },
+);
+
 // ── The cases made from real speech ──────────────────────────────────────────────────────────
 // The owner's own words from the app's logs are private: tests/eval/private/cases.ts, left out of
 // the public repo (export-ignore). When it's there, its cases run with these.
