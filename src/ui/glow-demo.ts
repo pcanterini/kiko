@@ -1,14 +1,16 @@
-// `kiko-dev _glow-demo`: the dithered voice glow (./dither-glow.ts) on its own, at the bottom of the
-// terminal, to see how it looks before it goes anywhere in the window: at its natural size
-// (GLOW_COLS × GLOW_ROWS, centred), or with --wide across the whole width. It plays a
+// `kiko-dev _glow-demo`: the dithered voice glow (./dither-glow.ts, Voice Glow's dither look ported)
+// on its own, at the bottom of the terminal, to see how it looks before it goes anywhere in the
+// window: at its natural size (GLOW_COLS × GLOW_ROWS, the original's chat input, centred), or with
+// --wide across the whole width (a wider host: the same glow, its band edge to edge). It plays a
 // made-up voice on a loop (a pause, a few phrases of speech, processing, Kiko speaking), or, with
 // --mic, follows the real microphone (the chosen one in the settings, else the system default:
-// through the helper app, as setup's mic test does).
+// through the helper app, as setup's mic test does), turned up as the original turns up a mic.
 //
 //   kiko-dev _glow-demo [--mic] [--braille | --blocks] [--rows N] [--wide] [--mono | --light]
 //
-// Colours: the colourful palette for a dark background; --light the one for a light background;
-// --mono Kiko's accent alone.
+// Braille by default (one dot one dither pixel); --blocks half-blocks (one a pixel, twice the pitch:
+// the original's pixelSize doubled), truecolor or 256 colours. Colours: the colourful palette for a
+// dark background; --light the one for a light background; --mono Kiko's accent alone.
 //
 // Keys: q or Ctrl+C quit (the screen and cursor as they were); 1 2 3 4 hold idle, listening,
 // processing, speaking; 0 goes back to the script (with --mic: to listening).
@@ -17,7 +19,7 @@ import { parseArgs } from "node:util";
 import { colorDepth } from "./cli-style.ts";
 import { COLORFUL, chooseEncoding, DitherGlow, GLOW_COLS, GLOW_ROWS, type GlowEncoding, type GlowMode, type GlowPalette, LIGHT, monoPalette } from "./dither-glow.ts";
 import { BRAND } from "./logo.ts";
-import { envelope, MIC_ENVELOPE, PLAIN_ENVELOPE } from "./voice-envelope.ts";
+import { micLevel } from "./voice-envelope.ts";
 
 export const GLOW_DEMO_USAGE = "Usage: kiko-dev _glow-demo [--mic] [--braille | --blocks] [--rows N] [--wide] [--mono | --light]";
 
@@ -196,10 +198,7 @@ export async function glowDemo(args: readonly string[]): Promise<number> {
   let { cols, rows, left } = band();
   const colors = flags.colors;
   const glow = new DitherGlow({ cols, rows, encoding, depth, palette: paletteOf(colors) });
-  const options = mic ? MIC_ENVELOPE : PLAIN_ENVELOPE;
   const started = performance.now();
-  let last = started;
-  let level = 0;
   let held: GlowMode | null = mic ? "listening" : null;
   let msAvg = 0;
 
@@ -210,16 +209,14 @@ export async function glowDemo(args: readonly string[]): Promise<number> {
   function frame() {
     const now = performance.now();
     const t = (now - started) / 1000;
-    const played = mic ? { mode: held ?? "listening", level: mic.level() } : held ? heldAt(held, t) : scriptAt(t);
-    level = envelope(level, played.level, now - last, options);
-    last = now;
+    const played = mic ? { mode: held ?? "listening", level: micLevel(mic.level()) } : held ? heldAt(held, t) : scriptAt(t);
     const a = performance.now();
-    const lines = glow.render({ time: t, level, mode: played.mode });
+    const lines = glow.render({ time: t, level: played.level, mode: played.mode });
     msAvg = msAvg * 0.9 + (performance.now() - a) * 0.1;
     const height = stdout.rows || 24;
     const top = height - lines.length + 1;
     let out = `${ESC}1;1H${ESC}2K ${accent}Kiko${reset} glow demo  ${dim}q quit · 1 idle · 2 listening · 3 processing · 4 speaking · 0 ${mic ? "listening" : "the script"}${reset}`;
-    out += `${ESC}${top - 1};1H${ESC}2K ${accent}${played.mode.padEnd(10)}${reset} ${dim}level ${level.toFixed(2)} · ${encoding}${note} · ${colors} · ${cols}×${lines.length} · ${msAvg.toFixed(2)} ms a frame${mic ? " · mic" : ""}${reset}`;
+    out += `${ESC}${top - 1};1H${ESC}2K ${accent}${played.mode.padEnd(10)}${reset} ${dim}level ${glow.level.toFixed(2)} · ${encoding}${note} · ${colors} · ${cols}×${lines.length} · ${msAvg.toFixed(2)} ms a frame${mic ? " · mic" : ""}${reset}`;
     for (let i = 0; i < lines.length; i++) out += `${ESC}${top + i};${left}H${lines[i]}`;
     stdout.write(out);
   }

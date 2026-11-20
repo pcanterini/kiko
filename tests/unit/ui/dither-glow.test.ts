@@ -1,71 +1,74 @@
-// The dithered voice glow (src/ui/dither-glow.ts) and its level's envelope (src/ui/voice-envelope.ts):
-// rows exactly as many and as wide as asked in both encodings; the seven lobes, symmetric, the middle
-// tallest, at their natural size in the default band; nothing lit in idle at level 0, the bottom
-// mostly lit at a high level, more lit as the level goes up; the palettes (each lobe its own colour,
-// blended between, drifting; mono and light) and the xterm-256 fallback; the Bayer matrix's
-// thresholds; braille's dot bits; the encoding falling back to braille without truecolor; the
-// envelope's threshold, gain, attack and release (and where they come from); and the demo's flags,
-// band and script. Nothing here opens the mic or touches the terminal.
+// The dithered voice glow (src/ui/dither-glow.ts, Voice Glow's dither look ported) and its input
+// chain (src/ui/voice-envelope.ts): rows exactly as many and as wide as asked in both encodings;
+// the grid (one braille dot one dither pixel at the phone's pitch, blocks at twice it); the
+// original's geometry resolved for its two hosts; the lobes; the dither's rule; the modes (idle
+// fades out, listening grows with the level and breathes at silence, a dome highest in the middle,
+// processing's beam travelling and leaving dust); the reach fitted to a short band; colour (the
+// filter, the drift, mono, light, xterm-256); braille cells (lit dots, the faint grid); the input
+// chain's gate, saturation and envelope; and the demo's flags, band and script. Nothing here opens
+// the mic or touches the terminal.
 import "../../setup.ts";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { colorDepth } from "../../../src/ui/cli-style.ts";
 import {
   BAYER4,
+  BRAILLE_DOTS,
   bayerThreshold,
   brailleOf,
+  CELL_PX,
   COLORFUL,
   chooseEncoding,
   DitherGlow,
-  DRIFT_SECONDS,
+  ditherGeometry,
+  ditherOn,
   GLOW_COLS,
-  GLOW_LOBES,
   GLOW_ROWS,
-  GLOW_SPAN,
   type GlowEncoding,
   type GlowMode,
+  type GlowPalette,
   LIGHT,
-  layoutLobes,
+  LOBE_SPAN,
+  lifted,
   monoPalette,
   nearest256,
-  PX_PER_DOT,
+  PIXEL,
+  reachFor,
   renderGlow,
-  type Rgb,
   sgrOf,
+  VOICE_LOBES,
 } from "../../../src/ui/dither-glow.ts";
 import { glowBand, glowDemoFlags, heldAt, paletteOf, scriptAt } from "../../../src/ui/glow-demo.ts";
 import { BRAND, to256 } from "../../../src/ui/logo.ts";
-import { envelope, gated, levelOfRms, MIC_ENVELOPE, PLAIN_ENVELOPE, perFrameToMs } from "../../../src/ui/voice-envelope.ts";
+import { BASE_GAIN, follow, micLevel, rmsOfLevel, shape, VOICE_INPUT } from "../../../src/ui/voice-envelope.ts";
 
 const plain = (s: string) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
 const cellsOf = (s: string) => [...plain(s)].length;
 const mono = monoPalette(BRAND.accent);
-const glow = (encoding: GlowEncoding, cols = 40, rows = 4, depth: 0 | 256 | 24 = 24, palette = COLORFUL) => new DitherGlow({ cols, rows, encoding, depth, palette });
-const unpack = (rgb: number): Rgb => [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255];
-/** A colour's hue in degrees: the same however far it's shaded towards black or white. */
-const hueOf = ([r, g, b]: Rgb) => (Math.atan2(Math.sqrt(3) * (g - b), 2 * r - g - b) * 180) / Math.PI;
-const hueGap = (a: Rgb, b: Rgb) => {
-  const d = Math.abs(hueOf(a) - hueOf(b)) % 360;
-  return d > 180 ? 360 - d : d;
-};
-/** The index of the palette colour nearest `rgb` in hue. */
-const nearestOf = (rgb: number, colors: readonly Rgb[]) => {
-  const c = unpack(rgb);
-  let best = 0;
-  for (let i = 1; i < colors.length; i++) if (hueGap(c, colors[i]) < hueGap(c, colors[best])) best = i;
-  return best;
-};
+const glow = (encoding: GlowEncoding = "braille", cols = GLOW_COLS, rows = GLOW_ROWS, depth: 0 | 256 | 24 = 24, palette: GlowPalette = COLORFUL) =>
+  new DitherGlow({ cols, rows, encoding, depth, palette });
 
-/** The share of pixel row `y` that's lit. */
-function litShare(g: DitherGlow, y: number) {
-  let n = 0;
-  for (let x = 0; x < g.pw; x++) if (g.lit(x, y)) n++;
-  return n / g.pw;
+/** `seconds` of frames at 60 a second, the voice at `level` throughout: the glow's last frame. */
+function play(g: DitherGlow, mode: GlowMode, level: number, seconds = 2, from = 0) {
+  let lines: readonly string[] = [];
+  const frames = Math.round(seconds * 60);
+  for (let i = 0; i <= frames; i++) lines = g.render({ time: from + i / 60, level, mode });
+  return lines;
 }
+
 function litAll(g: DitherGlow) {
   let n = 0;
   for (let y = 0; y < g.ph; y++) for (let x = 0; x < g.pw; x++) if (g.lit(x, y)) n++;
   return n;
+}
+function litRow(g: DitherGlow, y: number) {
+  let n = 0;
+  for (let x = 0; x < g.pw; x++) if (g.lit(x, y)) n++;
+  return n;
+}
+/** How high the glow is lit in columns x…x+3: dots up from the bottom to its highest lit pixel. */
+function heightAt(g: DitherGlow, x: number) {
+  for (let y = 0; y < g.ph; y++) for (let dx = 0; dx < 4; dx++) if (g.lit(x + dx, y)) return g.ph - y;
+  return 0;
 }
 
 describe("the glow's rows", () => {
@@ -77,17 +80,26 @@ describe("the glow's rows", () => {
           [37, 3],
           [1, 1],
         ]) {
-          const lines = renderGlow({ cols, rows, encoding, depth: 24, palette: COLORFUL, time: 1.7, level: 0.8, mode });
+          const lines = renderGlow({ cols, rows, encoding, depth: 24, palette: COLORFUL, time: 1.7, level: 0.8, mode, warmup: 0.5 });
           assert.equal(lines.length, rows);
           for (const l of lines) assert.equal(cellsOf(l), cols);
         }
       });
 
-  test("pixels: 2×4 a cell in braille, 1×2 in blocks", () => {
+  test("the grid: one braille dot a dither pixel at the phone's pitch (3.2 px); blocks one half-block, twice the pitch, the same host", () => {
+    assert.equal(CELL_PX, 3.2);
     const b = glow("braille", 30, 3);
-    assert.deepEqual([b.pw, b.ph], [60, 12]);
+    assert.deepEqual([b.pw, b.ph, b.cell], [60, 12, 3.2]);
     const k = glow("blocks", 30, 3);
-    assert.deepEqual([k.pw, k.ph], [30, 6]);
+    assert.deepEqual([k.pw, k.ph, k.cell], [30, 6, 6.4]);
+    assert.equal(k.cw, b.cw);
+  });
+
+  test("the natural size: the phone's ~400 px across, 12 rows for its glow at full voice", () => {
+    assert.equal(GLOW_COLS, 63);
+    assert.equal(GLOW_ROWS, 12);
+    const g = glow();
+    assert.ok(Math.abs(g.cw - 400) < 4, `${g.cw}`);
   });
 
   test("resize: the new size from the next frame", () => {
@@ -99,138 +111,203 @@ describe("the glow's rows", () => {
   });
 
   test("braille cells are braille or spaces; blocks cells are ▀ ▄ █ or spaces", () => {
-    const b = renderGlow({ cols: 60, rows: 4, encoding: "braille", depth: 24, palette: COLORFUL, time: 2, level: 1, mode: "listening" });
+    const b = renderGlow({ cols: 60, rows: 6, encoding: "braille", depth: 24, palette: COLORFUL, time: 2, level: 1, mode: "listening" });
     for (const ch of plain(b.join(""))) assert.ok(ch === " " || (ch.codePointAt(0)! >= 0x2801 && ch.codePointAt(0)! <= 0x28ff), ch);
-    const k = renderGlow({ cols: 60, rows: 4, encoding: "blocks", depth: 24, palette: COLORFUL, time: 2, level: 1, mode: "listening" });
+    const k = renderGlow({ cols: 60, rows: 6, encoding: "blocks", depth: 24, palette: COLORFUL, time: 2, level: 1, mode: "listening" });
     for (const ch of plain(k.join(""))) assert.ok(" ▀▄█".includes(ch), ch);
   });
 
-  test("without colour: no escape codes at all", () => {
-    const lines = renderGlow({ cols: 40, rows: 3, encoding: "braille", depth: 0, palette: COLORFUL, time: 1, level: 1, mode: "listening" });
+  test("without colour: no escape codes at all, and still the glow", () => {
+    const lines = renderGlow({ cols: 40, rows: 6, encoding: "braille", depth: 0, palette: COLORFUL, time: 1, level: 1, mode: "listening" });
     for (const l of lines) assert.ok(!l.includes("\x1b"));
     assert.ok(lines.join("").trim().length > 0);
   });
 
   test("truecolor: exact RGB; 256 colours: xterm's", () => {
-    const tc = renderGlow({ cols: 40, rows: 3, encoding: "blocks", depth: 24, palette: COLORFUL, time: 1, level: 1, mode: "listening" }).join("");
+    const tc = renderGlow({ cols: 40, rows: 6, encoding: "blocks", depth: 24, palette: COLORFUL, time: 1, level: 1, mode: "listening" }).join("");
     assert.match(tc, /\x1b\[38;2;\d+;\d+;\d+m/);
     assert.doesNotMatch(tc, /38;5;/);
-    const x256 = renderGlow({ cols: 40, rows: 3, encoding: "blocks", depth: 256, palette: COLORFUL, time: 1, level: 1, mode: "listening" }).join("");
+    const x256 = renderGlow({ cols: 40, rows: 6, encoding: "blocks", depth: 256, palette: COLORFUL, time: 1, level: 1, mode: "listening" }).join("");
     assert.match(x256, /\x1b\[38;5;\d+m/);
     assert.doesNotMatch(x256, /38;2;/);
   });
 });
 
-describe("the lobes", () => {
-  test("seven, symmetric about the middle: each one's mirror the same size and band", () => {
-    assert.equal(GLOW_LOBES.length, 7);
-    for (const l of GLOW_LOBES) {
-      const mirror = GLOW_LOBES.filter((m) => m.x === -l.x && m.w === l.w && m.h === l.h && m.band === l.band);
-      assert.equal(mirror.length, 1, `${l.x}`);
-    }
+describe("the original's look", () => {
+  test("seven lobes, symmetric about the middle, the middle tallest and widest; a 252 px ring", () => {
+    assert.equal(VOICE_LOBES.length, 7);
+    for (const l of VOICE_LOBES) assert.equal(VOICE_LOBES.filter((m) => m.x === -l.x && m.w === l.w && m.h === l.h && m.band === l.band).length, 1, `${l.x}`);
+    const middle = VOICE_LOBES[0];
+    for (const l of VOICE_LOBES.slice(1)) assert.ok(l.w < middle.w && l.h < middle.h);
+    assert.equal(LOBE_SPAN, 252);
   });
 
-  test("the middle one the tallest and widest, stepping down outwards; about 260 px across", () => {
-    const byDistance = [...GLOW_LOBES].sort((a, b) => Math.abs(a.x) - Math.abs(b.x));
-    assert.equal(byDistance[0].x, 0);
-    for (let i = 1; i < byDistance.length; i++) {
-      const [inner, outer] = [byDistance[i - 1], byDistance[i]];
-      if (Math.abs(inner.x) === Math.abs(outer.x)) continue;
-      assert.ok(outer.h < inner.h && outer.w < inner.w, `${outer.x}`);
-    }
-    const across = Math.max(...GLOW_LOBES.map((l) => l.x + l.w / 2)) - Math.min(...GLOW_LOBES.map((l) => l.x - l.w / 2));
-    assert.ok(across > 250 && across <= GLOW_SPAN, `${across}`);
+  test("the dither on the phone: its tuning exactly (as resolveVoiceDefaults('mobile', 'dark', 'dither'))", () => {
+    const g = ditherGeometry("mobile", "dark");
+    assert.deepEqual(
+      {
+        scale: g.scale,
+        reach: g.reach,
+        spread: g.spread,
+        flow: g.flow,
+        bend: g.bend,
+        glowWidth: g.glowWidth,
+        glowHeight: g.glowHeight,
+        bloomHeight: g.bloomHeight,
+        softness: g.softness,
+        rangeHeight: g.rangeHeight,
+        pixelSize: g.pixelSize,
+      },
+      { scale: 1, reach: 3, spread: 0.9, flow: 56, bend: 19, glowWidth: 1.6, glowHeight: 3, bloomHeight: 0.3, softness: 0.84, rangeHeight: 0.85, pixelSize: 1 },
+    );
+    assert.deepEqual([g.bandStrength, g.bandWidth, g.bandPosition, g.bandSkew, g.bandOffset, g.bandTail, g.bandTailPosition], [1.05, 3, 0.5, 0, -50, 0.62, 0.21]);
   });
 
-  test("at the natural size one braille dot is 4 of the look's px: about 65 dots across, the tallest about 14 dots", () => {
-    const g = glow("braille", GLOW_COLS, GLOW_ROWS);
-    assert.deepEqual([g.pw, g.ph], [68, 16]);
-    assert.equal(g.pw / GLOW_SPAN, 1 / PX_PER_DOT);
-    const lobes = layoutLobes(g.pw, g.ph);
-    const left = Math.min(...lobes.map((l) => l.cx - l.halfWidth / 1.2));
-    const right = Math.max(...lobes.map((l) => l.cx + l.halfWidth / 1.2));
-    assert.ok(Math.abs(right - left - 258 / 4) < 0.01, `${right - left}`);
-    assert.ok(Math.abs(lobes[0].height - (46 * 1.25) / 4) < 0.01, `${lobes[0].height}`);
-    for (const l of lobes) assert.ok(lobes.some((m) => Math.abs(m.cx + l.cx - g.pw) < 1e-9 && m.height === l.height));
+  test("the dither on the chat input: the phone's changes as ratios, then its own smaller cells", () => {
+    const g = ditherGeometry("default", "dark");
+    assert.deepEqual(
+      [g.scale, g.spread, g.bandStrength, g.bandPosition, g.glowWidth, g.rangeHeight, g.softness, g.bend, g.bandWidth, g.bandSkew, g.pixelSize],
+      [0.84, 1.4, 1.119, 0.44, 0.678, 0.708, 1.06, 58.286, 2.195, 0, 0.85],
+    );
+    // The light chat input starts taller and narrower.
+    assert.equal(ditherGeometry("default", "light").reach, 1.8);
   });
 
-  test("a wide band stretches the set across it; a taller one makes the lobes taller", () => {
-    const wide = layoutLobes(240, 16);
-    assert.ok(Math.abs(wide[6].cx - wide[5].cx - (216 * 240) / GLOW_SPAN) < 1e-9);
-    assert.equal(layoutLobes(68, 32)[0].height, 2 * layoutLobes(68, 16)[0].height);
+  test("the dither's rule: lifted brightness against the Bayer threshold, a little scaled and raised", () => {
+    assert.deepEqual(
+      [...BAYER4].sort((a, b) => a - b),
+      Array.from({ length: 16 }, (_, i) => i),
+    );
+    assert.equal(bayerThreshold(0, 0), 0.5 / 16);
+    assert.equal(bayerThreshold(1, 0), 8.5 / 16);
+    assert.equal(bayerThreshold(4, 4), bayerThreshold(0, 0));
+    assert.ok(Math.abs(lifted(0.5) - 0.5 ** 0.65 * 1.15) < 1e-12);
+    assert.equal(lifted(1), 1);
+    // The faintest threshold: on from 0.0588, so a raw 0.01 (lifted 0.057) stays off.
+    assert.equal(ditherOn(lifted(0.01), bayerThreshold(0, 0)), false);
+    assert.equal(ditherOn(lifted(0.012), bayerThreshold(0, 0)), true);
+    assert.equal(ditherOn(0.9, bayerThreshold(3, 1)), true);
   });
+});
 
-  for (const mode of ["listening", "speaking", "idle", "processing"] as const)
-    test(`${mode}: the brightness mirrored about the middle`, () => {
-      const g = glow("braille", GLOW_COLS, GLOW_ROWS);
-      g.render({ time: 2.3, level: 0.7, mode: mode === "processing" ? "listening" : mode });
-      for (let y = 0; y < g.ph; y++) for (let x = 0; x < g.pw / 2; x++) assert.ok(Math.abs(g.brightness(x, y) - g.brightness(g.pw - 1 - x, y)) < 1e-5, `${x},${y}`);
+describe("the modes", () => {
+  for (const encoding of ["braille", "blocks"] as const) {
+    test(`${encoding}: idle shows nothing (closed), and fades out after listening`, () => {
+      const g = glow(encoding, 80, 6);
+      for (const line of play(g, "idle", 0.8, 1)) assert.equal(plain(line).trim(), "");
+      play(g, "listening", 0.8, 1);
+      assert.ok(litAll(g) > 0);
+      for (const line of play(g, "idle", 0.8, 0.6, 1.1)) assert.equal(plain(line).trim(), "");
     });
 
-  test("listening at full level: the middle reaches about its 14 dots, the outer lobes lower", () => {
-    const g = glow("braille", GLOW_COLS, GLOW_ROWS);
-    g.render({ time: 0, level: 1, mode: "listening", bands: [1, 1, 1] });
-    /** How high the glow is lit around column `x`: the highest row (in dots up from the bottom) with a grain in x-2…x+2. */
-    const reach = (x: number) => {
-      for (let y = 0; y < g.ph; y++) for (let dx = -2; dx <= 2; dx++) if (g.lit(Math.round(x) + dx, y)) return g.ph - y;
-      return 0;
+    test(`${encoding}: listening lights more as the level goes up, and breathes at silence`, () => {
+      const counts = [0, 0.1, 0.3, 1].map((level) => {
+        const g = glow(encoding);
+        play(g, "listening", level, 2);
+        return litAll(g);
+      });
+      assert.ok(counts[0] > 0, "the idle glow at silence");
+      for (let i = 1; i < counts.length; i++) assert.ok(counts[i] > counts[i - 1], `${counts}`);
+    });
+  }
+
+  test("a dome: highest in the middle, lower towards the sides", () => {
+    const g = glow();
+    play(g, "listening", 0.3, 2);
+    const middle = heightAt(g, g.pw / 2 - 2);
+    assert.ok(middle > 12, `${middle}`);
+    assert.ok(heightAt(g, 4) < middle / 2, `${heightAt(g, 4)} at the side`);
+    assert.ok(heightAt(g, g.pw - 8) < middle / 2, `${heightAt(g, g.pw - 8)} at the other`);
+  });
+
+  test("dense at the bottom, sparse at the top", () => {
+    const g = glow();
+    play(g, "listening", 0.6, 2);
+    const bottom = litRow(g, g.ph - 1);
+    assert.ok(bottom > 0.8 * g.pw, `${bottom}`);
+    const top = Math.min(...Array.from({ length: g.ph }, (_, y) => (litRow(g, y) > 0 ? y : g.ph)));
+    assert.ok(litRow(g, top) < 0.2 * g.pw, `${litRow(g, top)} lit in its top row`);
+  });
+
+  test("at full voice the glow fits: its top row never lit across, in the natural band or a short one", () => {
+    for (const rows of [GLOW_ROWS, 6, 3]) {
+      const g = glow("braille", GLOW_COLS, rows);
+      play(g, "listening", 1, 2);
+      assert.ok(litRow(g, 0) < 0.25 * g.pw, `${rows} rows: ${litRow(g, 0)} of ${g.pw}`);
+    }
+    assert.equal(reachFor(3, GLOW_ROWS), 3);
+    assert.equal(reachFor(3, 24), 3);
+    assert.equal(reachFor(3, 6), 1.25);
+    assert.equal(reachFor(3, 1), 0.2);
+  });
+
+  test("processing: the beam travels across and leaves dust behind it", () => {
+    const g = glow("braille", 120, 8);
+    const centre = () => {
+      let sum = 0;
+      let n = 0;
+      for (let y = 0; y < g.ph; y++)
+        for (let x = 0; x < g.pw; x++)
+          if (g.lit(x, y)) {
+            sum += x;
+            n++;
+          }
+      return n ? sum / n : Number.NaN;
     };
-    const [middle, , , , , outer] = g.lobes;
-    assert.ok(reach(middle.cx) >= 12 && reach(middle.cx) <= 16, `${reach(middle.cx)}`);
-    assert.ok(reach(outer.cx) < reach(middle.cx), `${reach(outer.cx)}`);
+    play(g, "processing", 0, 0.5);
+    const a = centre();
+    play(g, "processing", 0, 0.6, 0.51);
+    const b = centre();
+    assert.ok(b > a + 10, `${a} then ${b}`);
+    let dust = 0;
+    for (let y = 0; y < g.ph; y++) for (let x = 0; x < g.pw; x++) if (g.pixel(x, y) === PIXEL.dust) dust++;
+    assert.ok(dust > 0, "dust behind it");
+    assert.ok(g.gather > 0.9);
+  });
+
+  test("speaking: the voice glow, following Kiko's voice", () => {
+    const g = glow();
+    play(g, "speaking", 0.6, 2);
+    assert.ok(litAll(g) > 200);
+    assert.ok(g.level > 0.5);
   });
 });
 
 describe("colour", () => {
-  test("each lobe in its own colour, in GLOW_LOBES' order, near its centre", () => {
-    const g = glow("braille", GLOW_COLS, GLOW_ROWS);
-    g.render({ time: 0, level: 0.8, mode: "listening" });
-    g.lobes.forEach((l, i) => assert.equal(nearestOf(g.colorAt(Math.floor(l.cx), g.ph - 3), COLORFUL.colors), i, `lobe ${i}`));
+  const colours = (lines: readonly string[]) => [...lines.join("").matchAll(/38;2;(\d+);(\d+);(\d+)m/g)].map((m) => m.slice(1).map(Number));
+
+  test("the colourful palette: many hues; the brightest pixels lifted towards white", () => {
+    const g = glow();
+    const cs = colours(play(g, "listening", 0.6, 2));
+    assert.ok(new Set(cs.map((c) => c.join())).size > 30);
+    assert.ok(
+      cs.some(([r, gg, b]) => Math.min(r, gg, b) > 180),
+      "a near-white core",
+    );
+    assert.ok(
+      cs.some(([r, gg, b]) => b > 200 && r < 150 && gg < 200),
+      "a blue",
+    );
+    assert.ok(
+      cs.some(([r, gg, b]) => r > 200 && b > 150 && gg < 150),
+      "a magenta",
+    );
   });
 
-  test("between two lobes, a blend of both", () => {
-    const g = glow("braille", GLOW_COLS, GLOW_ROWS);
-    g.render({ time: 0, level: 0.8, mode: "listening" });
-    // Halfway between the middle (pink) and the next one right (purple): a hue between theirs, clear of both.
-    const x = Math.round((g.lobes[0].cx + g.lobes[2].cx) / 2);
-    const blend = unpack(g.colorAt(x, g.ph - 2));
-    const [pink, purple] = [COLORFUL.colors[0], COLORFUL.colors[2]];
-    const span = hueGap(pink, purple);
-    assert.ok(Math.abs(hueGap(blend, pink) + hueGap(blend, purple) - span) < 1, `${blend}`);
-    assert.ok(hueGap(blend, pink) > span / 5 && hueGap(blend, purple) > span / 5, `${blend}`);
+  test("the hues drift ±24° over 12 s: -24° at the start, +24° at 6 s; mono's held", () => {
+    const frame = (palette: GlowPalette, seconds: number) => play(glow("braille", GLOW_COLS, GLOW_ROWS, 24, palette), "listening", 0.5, seconds).join("\n");
+    const held = (hueBase: number): GlowPalette => ({ ...COLORFUL, hueRange: 0, hueBase });
+    assert.equal(frame(COLORFUL, 6), frame(held(24), 6));
+    assert.notEqual(frame(COLORFUL, 6), frame(held(0), 6));
+    assert.equal(frame(COLORFUL, 12), frame(held(-24), 12));
+    assert.equal(mono.hueRange, 0);
+    for (const [r, g, b] of colours(play(glow("braille", GLOW_COLS, GLOW_ROWS, 24, mono), "listening", 0.5, 2))) assert.ok(b >= g && g >= r, `${r},${g},${b}`);
   });
 
-  test("the beam in the colours of the lobes it passes", () => {
-    const g = glow("braille", GLOW_COLS, GLOW_ROWS);
-    g.render({ time: 0, level: 0, mode: "processing" });
-    assert.equal(nearestOf(g.colorAt(Math.floor(g.lobes[5].cx), g.ph - 1), COLORFUL.colors), 5);
-    assert.equal(nearestOf(g.colorAt(Math.floor(g.lobes[6].cx), g.ph - 1), COLORFUL.colors), 6);
-  });
-
-  test("the hues drift with time; mono's never", () => {
-    const at = (palette = COLORFUL, time = 0) => {
-      const g = glow("braille", GLOW_COLS, GLOW_ROWS, 24, palette);
-      g.render({ time, level: 0.8, mode: "listening" });
-      return unpack(g.colorAt(g.pw / 2, g.ph - 2));
-    };
-    // A quarter turn: the hues at their furthest, COLORFUL's 20° along.
-    const gap = hueGap(at(COLORFUL, DRIFT_SECONDS / 4), at(COLORFUL, 0));
-    assert.ok(gap > 12 && gap < 28, `${gap}`);
-    assert.ok(hueGap(at(COLORFUL, DRIFT_SECONDS), at(COLORFUL, 0)) < 1);
-    assert.ok(hueGap(at(mono, DRIFT_SECONDS / 4), at(mono, 0)) < 1);
-  });
-
-  test("mono: every grain a shade of Kiko's accent (its blue over green over red kept)", () => {
-    const lines = renderGlow({ cols: 60, rows: 4, encoding: "braille", depth: 24, palette: mono, time: 1, level: 1, mode: "listening" }).join("");
-    const codes = [...lines.matchAll(/38;2;(\d+);(\d+);(\d+)m/g)].map((m) => m.slice(1).map(Number));
-    assert.ok(codes.length > 5);
-    for (const [r, g, b] of codes) assert.ok(b >= g && g >= r, `${r},${g},${b}`);
-  });
-
-  test("light: its own colours (the middle yellow)", () => {
-    const g = glow("braille", GLOW_COLS, GLOW_ROWS, 24, LIGHT);
-    g.render({ time: 0, level: 0.8, mode: "listening" });
-    assert.equal(nearestOf(g.colorAt(Math.floor(g.lobes[0].cx), g.ph - 3), LIGHT.colors), 0);
+  test("light: mixed towards white, its own palette; the demo's palettes", () => {
+    const cs = colours(play(glow("braille", GLOW_COLS, GLOW_ROWS, 24, LIGHT), "listening", 0.5, 2));
+    assert.ok(cs.length > 20);
+    assert.ok(cs.filter(([r, g, b]) => r + g + b > 450).length > cs.length / 3, "most of them light");
     assert.equal(paletteOf("light"), LIGHT);
     assert.equal(paletteOf("colorful"), COLORFUL);
     assert.deepEqual(paletteOf("mono").colors, mono.colors);
@@ -242,86 +319,14 @@ describe("colour", () => {
   });
 
   test("without truecolor: each colour's nearest xterm-256 colour", () => {
-    for (const palette of [COLORFUL, LIGHT])
-      for (const c of palette.colors) {
-        const rgb = (c[0] << 16) | (c[1] << 8) | c[2];
-        assert.equal(nearest256(rgb), to256(c), `${c}`);
-        assert.equal(sgrOf(rgb, 256), `\x1b[38;5;${to256(c)}m`);
-      }
-    // A few by hand: the pink, the blue and the orange.
-    assert.deepEqual([0xff4678, 0x3cbeff, 0xff9628].map(nearest256), [204, 75, 208]);
-    const lines = renderGlow({ cols: 40, rows: 4, encoding: "braille", depth: 256, palette: COLORFUL, time: 0, level: 1, mode: "listening" }).join("");
-    const used = new Set([...lines.matchAll(/38;5;(\d+)m/g)].map((m) => Number(m[1])));
-    assert.ok(used.size >= 7, `${[...used]}`);
+    for (const c of COLORFUL.colors) {
+      const rgb = (c[0] << 16) | (c[1] << 8) | c[2];
+      assert.equal(nearest256(rgb), to256(c), `${c}`);
+      assert.equal(sgrOf(rgb, 256), `\x1b[38;5;${to256(c)}m`);
+    }
+    const lines = play(glow("braille", 60, 8, 256), "listening", 0.6, 1).join("");
+    assert.ok(new Set([...lines.matchAll(/38;5;(\d+)m/g)].map((m) => m[1])).size >= 7);
     assert.doesNotMatch(lines, /38;2;/);
-  });
-});
-
-describe("dithering against the 4×4 Bayer matrix", () => {
-  test("the matrix holds each of 0–15 once; thresholds sit between 0 and 1, tiled every 4", () => {
-    assert.deepEqual(
-      [...BAYER4].sort((a, b) => a - b),
-      Array.from({ length: 16 }, (_, i) => i),
-    );
-    assert.equal(bayerThreshold(0, 0), 0.5 / 16);
-    assert.equal(bayerThreshold(1, 0), 8.5 / 16);
-    assert.equal(bayerThreshold(3, 3), 5.5 / 16);
-    assert.equal(bayerThreshold(4, 4), bayerThreshold(0, 0));
-    assert.equal(bayerThreshold(6, 5), bayerThreshold(2, 1));
-  });
-
-  for (const encoding of ["braille", "blocks"] as const) {
-    test(`${encoding}: idle at level 0 lights nothing, whatever the time`, () => {
-      const g = glow(encoding, 80, 4);
-      for (const time of [0, 0.4, 3.3, 77]) {
-        const lines = g.render({ time, level: 0, mode: "idle" });
-        assert.equal(litAll(g), 0);
-        for (const l of lines) assert.equal(plain(l).trim(), "");
-      }
-    });
-
-    test(`${encoding}: a high level lights most of the bottom row, fewer going up`, () => {
-      const g = glow(encoding, 120, 4);
-      g.render({ time: 2.5, level: 1, mode: "listening" });
-      const bottom = litShare(g, g.ph - 1);
-      assert.ok(bottom > 0.6, `bottom row ${bottom}`);
-      assert.ok(litShare(g, 0) < bottom, "the top row has fewer than the bottom");
-    });
-
-    test(`${encoding}: listening lights more as the level goes up, and a faint line at silence`, () => {
-      const g = glow(encoding, 120, 4);
-      const counts = [0, 0.3, 0.6, 1].map((level) => (g.render({ time: 4, level, mode: "listening" }), litAll(g)));
-      assert.ok(counts[0] > 0, "listening at silence still shows");
-      for (let i = 1; i < counts.length; i++) assert.ok(counts[i] > counts[i - 1], `${counts}`);
-    });
-  }
-
-  test("processing: a beam that moves left to right along the bottom", () => {
-    const g = glow("braille", 120, 4);
-    const centre = (time: number) => {
-      g.render({ time, level: 0, mode: "processing" });
-      // The brightest part of the bottom rows: where the most pixels are lit in a window.
-      let best = 0;
-      let at = 0;
-      for (let x = 0; x < g.pw - 12; x++) {
-        let n = 0;
-        for (let dx = 0; dx < 12; dx++) for (let y = g.ph - 4; y < g.ph; y++) if (g.lit(x + dx, y)) n++;
-        if (n > best) [best, at] = [n, x];
-      }
-      return at;
-    };
-    const a = centre(0.6);
-    const b = centre(1.2);
-    assert.ok(b > a, `${a} then ${b}`);
-  });
-
-  test("speaking stays lower than loud listening", () => {
-    const g = glow("braille", 120, 4);
-    const top = (mode: GlowMode) => {
-      g.render({ time: 3, level: 1, mode });
-      return litShare(g, 0) + litShare(g, 1) + litShare(g, 2) + litShare(g, 3);
-    };
-    assert.ok(top("speaking") < top("listening"));
   });
 });
 
@@ -332,99 +337,84 @@ describe("braille cells", () => {
     assert.equal(brailleOf(dots(["#.", "..", "..", ".."])), "⠁");
     assert.equal(brailleOf(dots([".#", "..", "..", ".."])), "⠈");
     assert.equal(brailleOf(dots(["#.", "#.", "#.", "#."])), "⡇");
-    assert.equal(brailleOf(dots([".#", ".#", ".#", ".#"])), "⢸");
     assert.equal(brailleOf(dots(["..", "..", "..", "##"])), "⣀");
     assert.equal(brailleOf(dots(["##", "##", "##", "##"])), "⣿");
-    assert.equal(brailleOf(dots(["#.", ".#", "#.", ".#"])), "⢕");
   });
 
-  test("a frame's cells are its pixels, dot for dot", () => {
-    const g = glow("braille", 16, 2, 0);
-    const lines = g.render({ time: 1.1, level: 0.7, mode: "listening" });
-    for (let r = 0; r < 2; r++)
-      for (let c = 0; c < 16; c++) {
-        const want = brailleOf(Array.from({ length: 4 }, (_, dy) => [g.lit(c * 2, r * 4 + dy), g.lit(c * 2 + 1, r * 4 + dy)]));
-        assert.equal([...lines[r]][c], want);
+  test("a cell's dots are its lit pixels and dust; with neither, one in four of its faint grid", () => {
+    const g = glow("braille", 63, 12, 0);
+    const lines = play(g, "listening", 0.5, 2);
+    let ghostCells = 0;
+    for (let r = 0; r < 12; r++)
+      for (let c = 0; c < 63; c++) {
+        let lit = 0;
+        let grid = 0;
+        for (let dy = 0; dy < 4; dy++)
+          for (let dx = 0; dx < 2; dx++) {
+            const k = g.pixel(c * 2 + dx, r * 4 + dy);
+            if (k === PIXEL.lit || k === PIXEL.dust) lit |= BRAILLE_DOTS[dy][dx];
+            else if (k === PIXEL.ghost && dx === 0 && dy % 2 === 0) grid |= BRAILLE_DOTS[dy][dx];
+          }
+        const want = lit || grid;
+        if (!lit && grid) ghostCells++;
+        assert.equal([...lines[r]][c].codePointAt(0), want ? 0x2800 + want : 32, `cell ${c},${r}`);
       }
+    assert.ok(ghostCells > 0, "the faint grid shows somewhere");
   });
 });
 
 describe("which encoding", () => {
-  const depthOf = (env: NodeJS.ProcessEnv) => colorDepth({ isTTY: true }, env);
-  test("truecolor (COLORTERM truecolor or 24bit): blocks", () => {
-    assert.equal(chooseEncoding(depthOf({ TERM: "xterm-256color", COLORTERM: "truecolor" })), "blocks");
-    assert.equal(chooseEncoding(depthOf({ TERM: "xterm-256color", COLORTERM: "24bit" })), "blocks");
-  });
-  test("no truecolor: braille", () => {
-    assert.equal(chooseEncoding(depthOf({ TERM: "xterm-256color" })), "braille");
-    assert.equal(chooseEncoding(depthOf({ TERM: "xterm-256color", NO_COLOR: "1", COLORTERM: "truecolor" })), "braille");
-  });
-  test("asked for: kept, except blocks without colour", () => {
-    assert.equal(chooseEncoding(24, "braille"), "braille");
-    assert.equal(chooseEncoding(256, "blocks"), "blocks");
+  test("braille by default, whatever the colours; blocks when asked, but not without colour", () => {
+    assert.equal(chooseEncoding(24), "braille");
+    assert.equal(chooseEncoding(256), "braille");
+    assert.equal(chooseEncoding(24, "blocks"), "blocks");
     assert.equal(chooseEncoding(0, "blocks"), "braille");
     assert.equal(new DitherGlow({ cols: 10, rows: 2, encoding: "blocks", depth: 0, palette: COLORFUL }).encoding, "braille");
   });
 });
 
-describe("the level's envelope", () => {
-  test("threshold and gain: silence under the threshold, stretched and held at 1 over it", () => {
-    const o = { threshold: 0.3, gain: 2 };
-    assert.equal(gated(0, o), 0);
-    assert.equal(gated(0.3, o), 0);
-    assert.ok(Math.abs(gated(0.44, o) - 0.4) < 1e-9);
-    assert.equal(gated(0.9, o), 1);
-    assert.equal(gated(Number.NaN, o), 0);
-    assert.equal(gated(0.5, PLAIN_ENVELOPE), 0.5);
+describe("the input chain", () => {
+  test("the original's settings", () => {
+    assert.deepEqual(VOICE_INPUT, { sensitivity: 3.1, threshold: 0.015, attack: 0.325, release: 0.86, idle: 0.18, breatheDuration: 5.2 });
+    assert.equal(BASE_GAIN, 5);
   });
 
-  test("attack is quick, release slow", () => {
-    const o = { threshold: 0, gain: 1, attackMs: 30, releaseMs: 300 };
-    const up = envelope(0, 1, 30, o);
-    assert.ok(Math.abs(up - (1 - Math.exp(-1))) < 1e-9);
-    const down = envelope(1, 0, 30, o);
-    assert.ok(down > 0.9 && down < 1, `${down}`);
+  test("shape: silence at or under the threshold, then rounding off towards 1", () => {
+    assert.equal(shape(0, 0.015), 0);
+    assert.equal(shape(0.015, 0.015), 0);
+    assert.equal(shape(Number.NaN, 0.015), 0);
+    assert.ok(Math.abs(shape(1, 0) - 1) < 1e-12);
+    assert.equal(shape(5, 0.015), 1);
+    const half = shape(0.5, 0);
+    assert.ok(Math.abs(half - (1 - Math.exp(-1.5)) / (1 - Math.exp(-3))) < 1e-12);
+    assert.ok(half > 0.5, "a soft knee: above linear");
   });
 
-  test("it gets there, never past it; no time, no change", () => {
-    let v = 0;
-    for (let i = 0; i < 100; i++) v = envelope(v, 0.8, 33, PLAIN_ENVELOPE);
-    assert.ok(v > 0.79 && v <= 0.8);
-    for (let i = 0; i < 200; i++) v = envelope(v, 0, 33, PLAIN_ENVELOPE);
-    assert.ok(v >= 0 && v < 0.01);
-    assert.equal(envelope(0.4, 1, 0, PLAIN_ENVELOPE), 0.4);
+  test("follow: the attack and release are time constants in seconds", () => {
+    assert.ok(Math.abs(follow(0, 1, 0.325, 0.325, 0.86) - (1 - Math.exp(-1))) < 1e-12);
+    assert.ok(Math.abs(follow(1, 0, 0.86, 0.325, 0.86) - Math.exp(-1)) < 1e-12);
+    assert.equal(follow(0.4, 1, 0, 0.325, 0.86), 0.4);
   });
 
-  test("the mic's: a quiet room is silence, talking lights it", () => {
-    let v = 0;
-    for (let i = 0; i < 30; i++) v = envelope(v, 0.2, 33, MIC_ENVELOPE);
-    for (let i = 0; i < 30; i++) v = envelope(v, 0.35, 33, MIC_ENVELOPE);
-    assert.equal(v, 0);
-    for (let i = 0; i < 30; i++) v = envelope(v, 0.8, 33, MIC_ENVELOPE);
-    assert.ok(v > 0.85, `${v}`);
-  });
-
-  test("the look's audio chain mapped on: attack 0.325, release 0.86 a frame at 60 fps; threshold 0.015 RMS; sensitivity 3.1", () => {
-    assert.ok(Math.abs(perFrameToMs(0.325) - 42.4) < 0.1);
-    assert.ok(Math.abs(perFrameToMs(1 - 0.86) - 110.5) < 0.1);
-    assert.ok(Math.abs(levelOfRms(0.015) - 0.392) < 0.001);
-    assert.equal(levelOfRms(1), 1);
-    assert.equal(levelOfRms(0.0001), 0);
-    assert.deepEqual(MIC_ENVELOPE, { threshold: 0.39, gain: 1.35, attackMs: 42, releaseMs: 111 });
-    assert.deepEqual(PLAIN_ENVELOPE, { threshold: 0, gain: 1, attackMs: 42, releaseMs: 111 });
-    // Full at the RMS where the look's level reaches 1: 0.015 + 1/3.1.
-    assert.ok(gated(levelOfRms(0.015 + 1 / 3.1), MIC_ENVELOPE) > 0.99);
+  test("the mic: levelOf's dB scale back to RMS, turned up as the original turns up a mic", () => {
+    assert.equal(rmsOfLevel(0), 0);
+    assert.ok(Math.abs(rmsOfLevel(1) - 1) < 1e-12);
+    assert.ok(Math.abs(rmsOfLevel(2 / 3) - 0.1) < 1e-12, "-20 dB");
+    assert.ok(Math.abs(micLevel(2 / 3) - 0.1 * 5 * 3.1) < 1e-12);
+    // A quiet room (-55 dB) is nearly nothing; talking (-26 dB) close to full.
+    assert.ok(shape(micLevel(5 / 60), VOICE_INPUT.threshold) < 0.05);
+    assert.ok(shape(micLevel(34 / 60), VOICE_INPUT.threshold) > 0.85);
   });
 });
 
 describe("the demo", () => {
   test("flags", () => {
-    const plain = { mic: false, encoding: undefined, rows: GLOW_ROWS, wide: false, colors: "colorful" };
-    assert.deepEqual(glowDemoFlags([]), plain);
-    assert.deepEqual(glowDemoFlags(["--mic", "--blocks", "--rows", "3"]), { ...plain, mic: true, encoding: "blocks", rows: 3 });
-    assert.deepEqual(glowDemoFlags(["--braille", "--rows=2"]), { ...plain, encoding: "braille", rows: 2 });
-    assert.deepEqual(glowDemoFlags(["--braille", "--wide", "--mono"]), { ...plain, encoding: "braille", wide: true, colors: "mono" });
-    assert.deepEqual(glowDemoFlags(["--light"]), { ...plain, colors: "light" });
+    const none = { mic: false, encoding: undefined, rows: GLOW_ROWS, wide: false, colors: "colorful" };
+    assert.deepEqual(glowDemoFlags([]), none);
+    assert.deepEqual(glowDemoFlags(["--mic", "--blocks", "--rows", "3"]), { ...none, mic: true, encoding: "blocks", rows: 3 });
+    assert.deepEqual(glowDemoFlags(["--braille", "--rows=2"]), { ...none, encoding: "braille", rows: 2 });
+    assert.deepEqual(glowDemoFlags(["--braille", "--wide", "--mono"]), { ...none, encoding: "braille", wide: true, colors: "mono" });
+    assert.deepEqual(glowDemoFlags(["--light"]), { ...none, colors: "light" });
     assert.ok("error" in glowDemoFlags(["--mono", "--light"]));
     assert.ok("error" in glowDemoFlags(["--braille", "--blocks"]));
     assert.ok("error" in glowDemoFlags(["--rows", "0"]));
@@ -432,16 +422,13 @@ describe("the demo", () => {
     assert.ok("error" in glowDemoFlags(["--loud"]));
   });
 
-  test("the band: 34 × 4 centred by default, the whole width with --wide", () => {
+  test("the band: 63 × 12 centred by default, the whole width with --wide", () => {
     const flags = { rows: GLOW_ROWS, wide: false };
-    assert.equal(GLOW_COLS, 34);
-    assert.equal(GLOW_ROWS, 4);
-    assert.deepEqual(glowBand(120, 40, flags), { cols: 34, rows: 4, left: 44 });
-    assert.deepEqual(glowBand(35, 40, flags), { cols: 34, rows: 4, left: 1 });
-    assert.deepEqual(glowBand(20, 40, flags), { cols: 20, rows: 4, left: 1 });
-    assert.deepEqual(glowBand(120, 40, { ...flags, wide: true }), { cols: 120, rows: 4, left: 1 });
-    assert.deepEqual(glowBand(120, 40, { rows: 8, wide: false }), { cols: 34, rows: 8, left: 44 });
-    assert.deepEqual(glowBand(120, 5, { rows: 8, wide: false }), { cols: 34, rows: 2, left: 44 });
+    assert.deepEqual(glowBand(120, 40, flags), { cols: 63, rows: 12, left: 29 });
+    assert.deepEqual(glowBand(40, 40, flags), { cols: 40, rows: 12, left: 1 });
+    assert.deepEqual(glowBand(120, 40, { ...flags, wide: true }), { cols: 120, rows: 12, left: 1 });
+    assert.deepEqual(glowBand(120, 40, { rows: 4, wide: false }), { cols: 63, rows: 4, left: 29 });
+    assert.deepEqual(glowBand(120, 8, flags), { cols: 63, rows: 5, left: 29 });
   });
 
   test("the script: idle, speech with pauses, processing, speaking, round again", () => {

@@ -1,66 +1,70 @@
-// A voice level made smooth enough to draw (./dither-glow.ts): the raw level (0–1, e.g. the mic's,
-// core/wake.ts levelOf) with the room's noise cut off below `threshold`, what's left stretched back
-// to 0–1 and turned up by `gain`, then followed by an envelope that rises quickly (`attackMs`) and
-// falls slowly (`releaseMs`), so a word lights the glow at once and a pause lets it sink gently.
-// Pure: the caller keeps the last value and gives the time since it.
+// The voice's level made ready to draw (./dither-glow.ts), as the Voice Glow it's ported from does
+// it: the raw level turned up (BASE_GAIN × sensitivity, for a mic's RMS), cut off below the
+// threshold (the room's noise), what's left rounded off so a shout doesn't clip (`shape`), then
+// followed by a one-pole envelope that rises with the attack's time constant and falls with the
+// release's (`follow`). Pure: the caller keeps the state and gives the time since the last frame.
 //
-// The timings and the mic's gate follow the Voice Glow look the glow is modelled on, whose audio
-// chain reads linear RMS once a display frame (60 a second) with:
-//   attack 0.325       the share of the way to a louder level it moves each frame
-//                      → attackMs = perFrameToMs(0.325) ≈ 42 ms
-//   release 0.86       the share of a level it keeps each frame on the way down
-//                      → releaseMs = perFrameToMs(1 - 0.86) ≈ 111 ms
-//   threshold 0.015    linear RMS: -36.5 dB, 0.39 on levelOf's -60…0 dB scale → threshold
-//   sensitivity 3.1    (RMS - threshold) × 3.1 reaches 1 at RMS 0.338 (-9.4 dB, 0.84 on levelOf's
-//                      scale): the gain that stretches 0.39–0.84 to 0–1 on ours, 1.35 → gain
-//   idle 0.18, breathe 5.2 s: the glow's, not the envelope's: listening's floor at silence and
-//                      its slow pulse (dither-glow.ts IDLE_FLOOR, BREATHE_SECONDS)
+// Ported from voice-glow 0.5.0 (https://github.com/Jakubantalik/Libraries.dev, packages/voice-glow):
+// src/voiceDriver.ts (BASE_GAIN, shape, follow) and the defaults of src/VoiceBeam.tsx's props.
+//
+// Copyright (c) 2026 Jakub Antalik
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
-export type EnvelopeOptions = {
-  /** Raw levels at or under this are silence (the mic's room noise sits around 0.15–0.3 on levelOf's scale). */
-  threshold: number;
-  /** What's over the threshold is multiplied by this (then held at 1). */
-  gain: number;
-  /** About how long the envelope takes to rise most of the way (a time constant, ms). */
-  attackMs: number;
-  /** And to fall. */
-  releaseMs: number;
-};
+/** The input chain's settings, the original's defaults. Times are time constants in seconds. */
+export const VOICE_INPUT = {
+  /** Multiplies a mic's RMS (after BASE_GAIN). */
+  sensitivity: 3.1,
+  /** Raw levels at or under this are silence; the bands' gate is 0.6 of it. */
+  threshold: 0.015,
+  /** How quickly the envelope rises, and falls (the bands fall 1.15× slower). */
+  attack: 0.325,
+  release: 0.86,
+  /** The glow at silence (0–1 of the way to full), and how long one slow breath of it takes. */
+  idle: 0.18,
+  breatheDuration: 5.2,
+} as const;
 
-/** A one-pole smoother's per-frame step (the share of the way it moves each frame) as a time constant in ms. */
-export const perFrameToMs = (step: number, fps = 60): number => -1000 / fps / Math.log(1 - step);
+/** A laptop mic at talking distance gives an RMS of about 0.03–0.2: this lifts it into the 0.15–1 the shaping expects. */
+export const BASE_GAIN = 5;
 
-/** levelOf's scale (-60…0 dB as 0–1) for a linear RMS amplitude. */
-export const levelOfRms = (rms: number): number => Math.min(1, Math.max(0, (20 * Math.log10(rms) + 60) / 60));
+const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
-const ATTACK_MS = Math.round(perFrameToMs(0.325));
-const RELEASE_MS = Math.round(perFrameToMs(1 - 0.86));
-const MIC_THRESHOLD = levelOfRms(0.015);
-const MIC_FULL = levelOfRms(0.015 + 1 / 3.1);
-
-/** For a level already 0–1 with no noise in it (the demo's own): the timings alone. */
-export const PLAIN_ENVELOPE: EnvelopeOptions = { threshold: 0, gain: 1, attackMs: ATTACK_MS, releaseMs: RELEASE_MS };
-
-/** For the mic (levelOf: -60…0 dB as 0–1): quiet rooms read about 0.2, talking 0.5–0.8. */
-export const MIC_ENVELOPE: EnvelopeOptions = {
-  threshold: Math.round(MIC_THRESHOLD * 100) / 100,
-  gain: Math.round(((1 - MIC_THRESHOLD) / (MIC_FULL - MIC_THRESHOLD)) * 100) / 100,
-  attackMs: ATTACK_MS,
-  releaseMs: RELEASE_MS,
-};
-
-/** A raw level with the threshold and gain applied: 0–1. */
-export function gated(raw: number, o: Pick<EnvelopeOptions, "threshold" | "gain">): number {
-  if (!(raw > o.threshold)) return 0;
-  const over = ((raw - o.threshold) / (1 - o.threshold || 1)) * o.gain;
-  return over >= 1 ? 1 : over;
+/** Noise gate, then soft saturation: 0 at or under `threshold`, rounding off towards 1. */
+export function shape(raw: number, threshold: number): number {
+  if (!(raw > threshold)) return 0;
+  const t = (raw - threshold) / Math.max(0.001, 1 - threshold);
+  return clamp01((1 - Math.exp(-3 * t)) / (1 - Math.exp(-3)));
 }
 
-/** The envelope's next value: from `previous`, `dtMs` later, towards the gated `raw`. */
-export function envelope(previous: number, raw: number, dtMs: number, o: EnvelopeOptions): number {
-  const target = gated(raw, o);
-  const tau = target > previous ? o.attackMs : o.releaseMs;
-  if (!(dtMs > 0)) return previous;
-  if (tau <= 0) return target;
-  return previous + (target - previous) * (1 - Math.exp(-dtMs / tau));
+/** One-pole follower, `dt` seconds on: towards `target`, with the attack's time constant going up and the release's going down. */
+export function follow(previous: number, target: number, dt: number, attack: number, release: number): number {
+  const tau = target > previous ? attack : release;
+  return previous + (target - previous) * (1 - Math.exp(-dt / Math.max(0.001, tau)));
+}
+
+/** A level on core/wake.ts levelOf's scale (-60…0 dB as 0–1) back to the linear RMS it came from; 0 stays 0. */
+export function rmsOfLevel(level: number): number {
+  return level > 0 ? 10 ** ((Math.min(1, level) * 60 - 60) / 20) : 0;
+}
+
+/** The mic's level as the glow takes it (the original's analyser path): its RMS × BASE_GAIN × sensitivity, not held to 1. */
+export function micLevel(levelOfValue: number, sensitivity: number = VOICE_INPUT.sensitivity): number {
+  return rmsOfLevel(levelOfValue) * BASE_GAIN * sensitivity;
 }
