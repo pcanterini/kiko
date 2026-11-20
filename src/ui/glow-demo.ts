@@ -1,39 +1,76 @@
-// `kiko-dev _glow-demo`: the dithered voice glow (./dither-glow.ts) on its own, full width at the
-// bottom of the terminal, to see how it looks before it goes anywhere in the window. It plays a
+// `kiko-dev _glow-demo`: the dithered voice glow (./dither-glow.ts) on its own, at the bottom of the
+// terminal, to see how it looks before it goes anywhere in the window: at its natural size
+// (GLOW_COLS × GLOW_ROWS, centred), or with --wide across the whole width. It plays a
 // made-up voice on a loop (a pause, a few phrases of speech, processing, Kiko speaking), or, with
 // --mic, follows the real microphone (the chosen one in the settings, else the system default:
 // through the helper app, as setup's mic test does).
 //
-//   kiko-dev _glow-demo [--mic] [--braille | --blocks] [--rows N]
+//   kiko-dev _glow-demo [--mic] [--braille | --blocks] [--rows N] [--wide] [--mono | --light]
+//
+// Colours: the colourful palette for a dark background; --light the one for a light background;
+// --mono Kiko's accent alone.
 //
 // Keys: q or Ctrl+C quit (the screen and cursor as they were); 1 2 3 4 hold idle, listening,
 // processing, speaking; 0 goes back to the script (with --mic: to listening).
 // Drawn with plain ANSI on the alternate screen; nothing of Kiko's runs but, with --mic, the mic.
 import { parseArgs } from "node:util";
 import { colorDepth } from "./cli-style.ts";
-import { chooseEncoding, DitherGlow, type GlowEncoding, type GlowMode } from "./dither-glow.ts";
+import { COLORFUL, chooseEncoding, DitherGlow, GLOW_COLS, GLOW_ROWS, type GlowEncoding, type GlowMode, type GlowPalette, LIGHT, monoPalette } from "./dither-glow.ts";
 import { BRAND } from "./logo.ts";
 import { envelope, MIC_ENVELOPE, PLAIN_ENVELOPE } from "./voice-envelope.ts";
 
-export const GLOW_DEMO_USAGE = "Usage: kiko-dev _glow-demo [--mic] [--braille | --blocks] [--rows N]";
+export const GLOW_DEMO_USAGE = "Usage: kiko-dev _glow-demo [--mic] [--braille | --blocks] [--rows N] [--wide] [--mono | --light]";
 
 const FPS = 30;
 const MODES: readonly GlowMode[] = ["idle", "listening", "processing", "speaking"];
 
-export type GlowDemoFlags = { mic: boolean; encoding?: GlowEncoding; rows: number };
+export type GlowColors = "colorful" | "light" | "mono";
+export type GlowDemoFlags = { mic: boolean; encoding?: GlowEncoding; rows: number; wide: boolean; colors: GlowColors };
 
 /** The demo's flags, or what's wrong with them. */
 export function glowDemoFlags(args: readonly string[]): GlowDemoFlags | { error: string } {
-  let values: { mic?: boolean; braille?: boolean; blocks?: boolean; rows?: string };
+  let values: { mic?: boolean; braille?: boolean; blocks?: boolean; rows?: string; wide?: boolean; mono?: boolean; light?: boolean };
   try {
-    values = parseArgs({ args: [...args], options: { mic: { type: "boolean" }, braille: { type: "boolean" }, blocks: { type: "boolean" }, rows: { type: "string" } }, strict: true }).values;
+    values = parseArgs({
+      args: [...args],
+      options: {
+        mic: { type: "boolean" },
+        braille: { type: "boolean" },
+        blocks: { type: "boolean" },
+        rows: { type: "string" },
+        wide: { type: "boolean" },
+        mono: { type: "boolean" },
+        light: { type: "boolean" },
+      },
+      strict: true,
+    }).values;
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
   if (values.braille && values.blocks) return { error: "--braille or --blocks, not both" };
-  const rows = values.rows === undefined ? 4 : Number(values.rows);
+  if (values.mono && values.light) return { error: "--mono or --light, not both" };
+  const rows = values.rows === undefined ? GLOW_ROWS : Number(values.rows);
   if (!Number.isInteger(rows) || rows < 1 || rows > 16) return { error: "--rows takes a whole number from 1 to 16" };
-  return { mic: Boolean(values.mic), encoding: values.braille ? "braille" : values.blocks ? "blocks" : undefined, rows };
+  return {
+    mic: Boolean(values.mic),
+    encoding: values.braille ? "braille" : values.blocks ? "blocks" : undefined,
+    rows,
+    wide: Boolean(values.wide),
+    colors: values.mono ? "mono" : values.light ? "light" : "colorful",
+  };
+}
+
+/** The palette for the --mono and --light flags. */
+export const paletteOf = (colors: GlowColors): GlowPalette => (colors === "mono" ? monoPalette(BRAND.accent) : colors === "light" ? LIGHT : COLORFUL);
+
+/**
+ * The glow's band in a terminal `termCols` × `termRows`: GLOW_COLS centred (the set at its natural
+ * size), or the whole width with --wide; `rows` high, leaving room for the demo's two lines.
+ * `left` is the band's first column, from 1.
+ */
+export function glowBand(termCols: number, termRows: number, flags: Pick<GlowDemoFlags, "rows" | "wide">): { cols: number; rows: number; left: number } {
+  const cols = flags.wide ? termCols : Math.min(GLOW_COLS, termCols);
+  return { cols, rows: Math.min(flags.rows, Math.max(1, termRows - 3)), left: Math.floor((termCols - cols) / 2) + 1 };
 }
 
 // ─── The made-up voice ───────────────────────────────────────────────────────────────────────────
@@ -155,8 +192,10 @@ export async function glowDemo(args: readonly string[]): Promise<number> {
     }
   }
 
-  const rows = () => Math.min(flags.rows, Math.max(1, (stdout.rows || 24) - 3));
-  const glow = new DitherGlow({ cols: stdout.columns || 80, rows: rows(), encoding, depth, color: BRAND.accent });
+  const band = () => glowBand(stdout.columns || 80, stdout.rows || 24, flags);
+  let { cols, rows, left } = band();
+  const colors = flags.colors;
+  const glow = new DitherGlow({ cols, rows, encoding, depth, palette: paletteOf(colors) });
   const options = mic ? MIC_ENVELOPE : PLAIN_ENVELOPE;
   const started = performance.now();
   let last = started;
@@ -180,14 +219,15 @@ export async function glowDemo(args: readonly string[]): Promise<number> {
     const height = stdout.rows || 24;
     const top = height - lines.length + 1;
     let out = `${ESC}1;1H${ESC}2K ${accent}Kiko${reset} glow demo  ${dim}q quit · 1 idle · 2 listening · 3 processing · 4 speaking · 0 ${mic ? "listening" : "the script"}${reset}`;
-    out += `${ESC}${top - 1};1H${ESC}2K ${accent}${played.mode.padEnd(10)}${reset} ${dim}level ${level.toFixed(2)} · ${encoding}${note} · ${stdout.columns || 80}×${lines.length} · ${msAvg.toFixed(2)} ms a frame${mic ? " · mic" : ""}${reset}`;
-    for (let i = 0; i < lines.length; i++) out += `${ESC}${top + i};1H${lines[i]}`;
+    out += `${ESC}${top - 1};1H${ESC}2K ${accent}${played.mode.padEnd(10)}${reset} ${dim}level ${level.toFixed(2)} · ${encoding}${note} · ${colors} · ${cols}×${lines.length} · ${msAvg.toFixed(2)} ms a frame${mic ? " · mic" : ""}${reset}`;
+    for (let i = 0; i < lines.length; i++) out += `${ESC}${top + i};${left}H${lines[i]}`;
     stdout.write(out);
   }
 
   return new Promise<number>((resolve) => {
     const onResize = () => {
-      glow.resize(stdout.columns || 80, rows());
+      ({ cols, rows, left } = band());
+      glow.resize(cols, rows);
       stdout.write(`${ESC}2J`);
     };
     const onKey = (data: Buffer) => {

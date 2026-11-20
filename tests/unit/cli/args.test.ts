@@ -78,6 +78,8 @@ describe("commands", () => {
   test("Kiko Dev's own _glow-demo takes its flags (read by the demo), and isn't in the help", () => {
     assert.deepEqual(parseCli(["_glow-demo"]), run("_glow-demo"));
     assert.deepEqual(parseCli(["_glow-demo", "--mic", "--blocks", "--rows", "3"]), run("_glow-demo", ["--mic", "--blocks", "--rows", "3"]));
+    const all = ["--mic", "--braille", "--rows", "3", "--wide", "--light"];
+    assert.deepEqual(parseCli(["_glow-demo", ...all]), run("_glow-demo", all));
     assert.ok(!USAGE.includes("_glow"));
   });
   test("claude's own flags go to it untouched, kiko's look-alikes too", () => {

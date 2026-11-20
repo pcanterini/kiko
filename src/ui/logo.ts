@@ -74,20 +74,26 @@ const nearest = new Map<string, number>();
 /** The nearest xterm-256 colour to a "#rrggbb" (to256). */
 export const hexTo256 = (h: string): number => to256(hex(h));
 
-/** The nearest xterm-256 colour by redmean distance. */
+/** The nearest xterm-256 colour by redmean distance (cached: for the few colours drawn again and again). */
 export function to256(c: Rgb): number {
   const key = c.join(",");
   const known = nearest.get(key);
   if (known !== undefined) return known;
-  const [r, g, b] = c;
+  const best = nearestXterm(c[0], c[1], c[2]);
+  nearest.set(key, best);
+  return best;
+}
+
+/** The nearest xterm-256 colour by redmean distance, worked out each time (for callers with their own cache). */
+export function nearestXterm(r: number, g: number, b: number): number {
   let best = 16;
   let bestD = Number.POSITIVE_INFINITY;
-  XTERM.forEach(([x, y, z], i) => {
+  for (let i = 0; i < XTERM.length; i++) {
+    const [x, y, z] = XTERM[i];
     const rm = (r + x) / 2;
     const d = (2 + rm / 256) * (x - r) ** 2 + 4 * (y - g) ** 2 + (2 + (255 - rm) / 256) * (z - b) ** 2;
     if (d < bestD) [best, bestD] = [16 + i, d];
-  });
-  nearest.set(key, best);
+  }
   return best;
 }
 

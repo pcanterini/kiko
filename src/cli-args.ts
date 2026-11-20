@@ -43,8 +43,8 @@ export const COMMANDS: Record<string, number> = {
   help: 0,
   // Kiko Dev's own, not in the help: each state of the Mac overlay prototype, through the running helper app.
   "_overlay-test": 0,
-  // And a preview of the dithered voice glow (ui/glow-demo.ts): --mic, --braille or --blocks, --rows N.
-  "_glow-demo": 4,
+  // And a preview of the dithered voice glow (ui/glow-demo.ts): --mic, --braille or --blocks, --rows N, --wide, --mono or --light.
+  "_glow-demo": 8,
 };
 
 /** The account commands' lines in the help, while accounts are open (core/env.ts accountsLive). */
