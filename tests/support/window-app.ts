@@ -82,7 +82,9 @@ async function sessions(): Promise<Session[]> {
   return [...inside, ...(config.outside ? [outside] : [])];
 }
 
-ui.set({ window: { shown: null, note: "" }, about: { ...ui.state.about, hotkey: "right_option", pttMode: "hold" }, sessionsLoaded: true });
+// Dollars on the line as on your own keys (src/app/status.ts costShown): the store has none until the
+// app says (null, as on the subscription: core/dollars.ts), and the live tests check where they go.
+ui.set({ window: { shown: null, note: "" }, about: { ...ui.state.about, hotkey: "right_option", pttMode: "hold" }, sessionsLoaded: true, cost: 0 });
 const page = join(dir, "page.jsonl");
 keepPage(page);
 const glue = startWindow(tmux, list, page, undefined, (line) => log({ said: line }));

@@ -1,7 +1,8 @@
 // The Kiko window's classic look (src/terminals/tmux/classic.ts, window.ts) on a pretend tmux
 // (tests/support/fake-tmux.ts) that says it's 3.8: the frame under two floating boxes, their titles
 // and border colours following the keyboard, the boxes placed for the window's size, sessions still
-// swapped into the stage's box, the caption made and gone; and on an older tmux the tiled look,
+// swapped into the stage's box, the caption made and gone, the voice glow's borderless band under
+// it made, placed and gone (and none in a window too small); and on an older tmux the tiled look,
 // unchanged. The real tmux is in tests/live/terminals/classic-live.test.ts.
 import "../../setup.ts";
 import assert from "node:assert/strict";
@@ -11,6 +12,7 @@ import {
   BAR,
   CLASSIC_TITLE,
   closeCaption,
+  closeGlow,
   describe as layoutOf,
   DRAG_TABLE,
   DRAGGING,
@@ -20,6 +22,7 @@ import {
   MARK,
   markFormat,
   openCaption,
+  openGlow,
   openWindow,
   place,
   ROLE,
@@ -46,7 +49,12 @@ import {
   TITLE,
   TITLE_REST,
   floats,
+  GLOW_MIN_COLS,
+  GLOW_MIN_ROWS,
+  GLOW_TITLE,
+  glowBox,
 } from "../../../src/terminals/tmux/classic.ts";
+import { GLOW_COLS } from "../../../src/ui/dither-glow.ts";
 import { FakeTmux } from "../../support/fake-tmux.ts";
 
 const APP = ["/bin/sh", "-c", "the app"];
@@ -338,6 +346,85 @@ describe("the caption", () => {
   });
 });
 
+describe("the glow", () => {
+  test("its band rests on the boxes' bottom edge, centred, at the glow's natural width; four lines, three in a short window; the caption over it", () => {
+    for (const [cols, rows] of [
+      [160, 45],
+      [100, 30],
+      [60, 20],
+      [GLOW_MIN_COLS, GLOW_MIN_ROWS],
+    ]) {
+      const edge = boxes(cols, rows).list.h - 1; // the boxes' bottom border's line
+      const g = glowBox(cols, rows)!;
+      assert.equal(g.y + g.h - 1, edge - 1, `${cols}x${rows}: just above the bottom edge`);
+      assert.equal(g.h, rows >= 24 ? 4 : 3);
+      assert.equal(g.w, Math.min(GLOW_COLS, cols - 4));
+      assert.ok(Math.abs(g.x - (cols - g.x - g.w)) <= 1, `${cols}x${rows}: centred`);
+      for (const lines of [1, 3]) {
+        const c = captionBox(cols, rows, lines, g.h);
+        assert.equal(c.y + c.h - 1, g.y - 1, `${cols}x${rows}: the caption's bottom edge just over the glow`);
+      }
+    }
+    assert.deepEqual(glowBox(160, 45), { x: 48, y: 39, w: 63, h: 4 });
+    // A window too small for it: none.
+    assert.equal(glowBox(160, GLOW_MIN_ROWS - 1), null);
+    assert.equal(glowBox(GLOW_MIN_COLS - 1, 45), null);
+    assert.equal(glowBox(30, 8), null);
+  });
+
+  test("a borderless box of its own, never the keyboard's, no title; the caption made over it; placed with the boxes; then gone", async () => {
+    const { t, view } = await setup();
+    const made = (await openGlow(t.run))!;
+    assert.deepEqual(made.box, glowBox(160, 45));
+    const v = await view();
+    assert.equal(v.glow?.id, made.id);
+    assert.notEqual(v.stage?.id, made.id, "never taken for the stage");
+    assert.equal(v.list!.active, true, "the keyboard stays where it was");
+    const call = t.calls.find((c) => c[0] === "new-pane" && c.includes(GLOW_TITLE))!;
+    assert.equal(call[call.indexOf("-B") + 1], "none", "no border");
+    assert.ok(call.includes("-d"));
+    assert.deepEqual(box(t, made.id), made.box);
+    const p = t.panes.get(made.id)!;
+    assert.equal(p.opts[ROLE], "glow");
+    assert.deepEqual(p.command.slice(1, 2), [FRAME]);
+    assert.equal(p.command.at(-1), "glow");
+    assert.equal(await title(t, made.id), "", "no title");
+    // The one there already, not a second.
+    assert.equal((await openGlow(t.run))!.id, made.id);
+    // A caption made while it's up sits over it.
+    const caption = (await openCaption(t.run, 1))!;
+    assert.deepEqual(box(t, caption), captionBox(160, 45, 1, made.box.h));
+    // The window resized: both where they go for its size.
+    const w = t.windows.get(t.panes.get(v.list!.id)!.window)!;
+    [w.width, w.height] = [100, 30];
+    await place(t.run);
+    assert.deepEqual(box(t, made.id), glowBox(100, 30));
+    assert.deepEqual(box(t, caption), captionBox(100, 30, 1, 4));
+    await closeGlow(t.run, made.id);
+    assert.equal((await view()).glow, null);
+    await closeGlow(t.run, made.id); // gone already: nothing
+    await closeCaption(t.run, caption);
+  });
+
+  test("known by its title from the moment it's made; one that ended is tidied away; none in a window too small or zoomed", async () => {
+    const { t, view } = await setup();
+    const id = (await t.run(["new-pane", "-d", "-t", `=${WINDOW}:`, "-B", "none", "-T", GLOW_TITLE, "-x", "40", "-y", "3", "-P", "-F", "#{pane_id}", "--", "true"])).trim();
+    let v = await view();
+    assert.equal(v.glow?.id, id);
+    assert.equal(v.stage?.role, "placeholder");
+    t.end(id);
+    await tidy(t.run);
+    assert.equal((await view()).glow, null);
+    v = await view();
+    const w = t.windows.get(t.panes.get(v.list!.id)!.window)!;
+    [w.width, w.height] = [80, GLOW_MIN_ROWS - 1];
+    assert.equal(await openGlow(t.run), null);
+    [w.width, w.height] = [160, 45];
+    w.zoomed = true;
+    assert.equal(await openGlow(t.run), null);
+  });
+});
+
 describe("older tmux (no floating panes)", () => {
   test("the tiled look, unchanged: two panes side by side, the bottom line in the status line, no frame", async () => {
     const { t, view } = await setup("tmux 3.7");
@@ -368,8 +455,9 @@ describe("older tmux (no floating panes)", () => {
       t.hooks.some((h) => h[0] === "pane-resized"),
       false,
     );
-    // A caption has nowhere to go.
+    // A caption has nowhere to go, nor a glow.
     assert.equal(await openCaption(t.run, 1), null);
+    assert.equal(await openGlow(t.run), null);
   });
 
   test("a tiled window, opened by a `kiko` whose tmux floats its panes: made over in the classic look, every pane and process as it was", async () => {

@@ -41,9 +41,8 @@ export function windowZoom(w: WindowShared): WindowZoom {
       const want = wantsZoom(ui.state);
       if (want === zoomed) return;
       zoomed = want;
+      // Unzoomed, the boxes are put back for the window's size now (it may have changed while zoomed): window.ts zoom.
       await win.zoom(tmux, list, want).catch((err) => log("window_failed", { what: "zoom", error: why(err) }));
-      // The boxes put back for the window's size now (it may have changed while zoomed).
-      if (!want && w.look === "classic") await win.place(tmux).catch(() => {});
     });
   }
   // Unzoomed by tmux, not the app (a click on the other pane, the menu's Tab): settings close then.
@@ -88,7 +87,6 @@ export function windowZoom(w: WindowShared): WindowZoom {
         if (list && zoomed && ui.state.screen !== "settings") {
           zoomed = false;
           await win.zoom(tmux, list, false).catch((err) => log("window_failed", { what: "zoom", error: why(err) }));
-          if (w.look === "classic") await win.place(tmux).catch(() => {});
           await sized();
         }
       } finally {

@@ -106,6 +106,9 @@ export type Settings = Partial<{
   // the default) or "nerd" (Nerd Font icons where the agent has one: Nerd Fonts 3.5 or newer).
   // KIKO_ICONS wins over it.
   icons: Icons;
+  // The voice glow at the bottom of the Kiko window while you talk, while Kiko works out where your
+  // words go and while it speaks (ui/window-glow.ts): on unless turned off.
+  voiceGlow?: boolean;
   // What you answered when something took the Kiko key (terminals/tmux/clash.ts), by which clash
   // (clashId: "terminal:Warp:C-Space:C-\\"): "fallback" (that key from now on whenever it comes up) or
   // "own" (a key of your own, set in settings). Read by `kiko`, so the same clash isn't asked about

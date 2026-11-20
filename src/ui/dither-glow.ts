@@ -1,8 +1,8 @@
 // A dithered voice glow for the terminal: Voice Glow's "dither" look, ported. A broad mound of
 // light rising from the bottom edge in seven coloured lobes that ripple and drift with the voice,
 // a thin multicoloured band hugging the edge, the whole sampled on a grid of small square pixels,
-// each on or off by a 4×4 ordered dither and its colour cut to a few levels. A prototype
-// (`kiko-dev _glow-demo`: ./glow-demo.ts); not in the window yet.
+// each on or off by a 4×4 ordered dither and its colour cut to a few levels. In the Kiko window
+// while you talk (./window-glow.ts), and on its own in `kiko-dev _glow-demo` (./glow-demo.ts).
 //
 // Ported from voice-glow 0.5.0, the MIT-licensed open-source package of Libraries.dev
 // (https://github.com/Jakubantalik/Libraries.dev, packages/voice-glow), its free "dither" look only:

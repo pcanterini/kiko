@@ -34,7 +34,9 @@
 // On tmux 3.8 and later the window has the classic look instead (./classic.ts: the full-screen
 // UI's, two boxes side by side, one line under them): the list and the stage are floating panes
 // over a third, the frame (./frame-pane.ts), which paints that line, the app's rendering; no status
-// line. Everything else (the swaps, the homes, the hooks, the menus) is the same.
+// line. Over them while you talk, the caption (your words) and the voice glow under it, each a
+// floating pane that never takes the keyboard. Everything else (the swaps, the homes, the hooks, the
+// menus) is the same.
 //
 // Used by `kiko` (src/cli.ts), by the tmux adapter to open new sessions into the window, and by
 // the app (src/ui/window-glue.ts). Imports nothing that loads .env, reads settings or writes logs.
@@ -53,6 +55,8 @@ import {
   draggedFormat,
   FOCUS_BORDER,
   geometry,
+  GLOW_TITLE,
+  glowBox,
   LOOK,
   MENU_AT,
   placeCommands,
@@ -73,8 +77,8 @@ export type Tmux = (args: string[], input?: string) => Promise<string>;
 // Pane, window and session options of ours ("@…" options are tmux's user options).
 /**
  * Pane: "list" (the app's pane), "placeholder", "viewer" (an outside session's conversation), or
- * unset (a session); in the classic look also "frame" (the line under the boxes) and
- * "caption" (your words while you dictate).
+ * unset (a session); in the classic look also "frame" (the line under the boxes),
+ * "caption" (your words while you dictate) and "glow" (the voice glow under them).
  */
 export const ROLE = appOption("role");
 /** Pane (classic look): the agent mark before its name in its box's title, a tmux format (the app sets it: setMark). */
@@ -170,7 +174,7 @@ type WPane = {
   window: string;
   session: string;
   dead: boolean;
-  role: "list" | "placeholder" | "viewer" | "frame" | "caption" | "";
+  role: "list" | "placeholder" | "viewer" | "frame" | "caption" | "glow" | "";
   home: string;
   inView: boolean;
   width: number;
@@ -195,14 +199,15 @@ type View = {
   listWidth: number;
   /** "classic" (./classic.ts: boxes over the frame) or "tiled" (two panes and the status line). */
   look: "classic" | "tiled";
-  /** The classic look's frame pane and caption (null for none, and in the tiled look). */
+  /** The classic look's frame pane, caption and glow (null for none, and in the tiled look). */
   frame: WPane | null;
   caption: WPane | null;
+  glow: WPane | null;
 };
 export type Layout = { panes: WPane[]; view: View | null };
 
-/** A pane's role (ROLE); a caption's from its title too, from the moment it's made (CAPTION_TITLE). */
-const ROLE_FIELD = `#{?#{${ROLE}},#{${ROLE}},#{?#{==:#{pane_title},${CAPTION_TITLE}},caption,}}`;
+/** A pane's role (ROLE); a caption's or the glow's from its title too, from the moment it's made (CAPTION_TITLE, GLOW_TITLE). */
+const ROLE_FIELD = `#{?#{${ROLE}},#{${ROLE}},#{?#{==:#{pane_title},${CAPTION_TITLE}},caption,#{?#{==:#{pane_title},${GLOW_TITLE}},glow,}}}`;
 
 const FIELDS = [
   "W",
@@ -228,7 +233,7 @@ const FIELDS = [
 ];
 const LAYOUT_FORMAT = FIELDS.join("\t");
 
-const ROLES: readonly WPane["role"][] = ["list", "placeholder", "viewer", "frame", "caption"];
+const ROLES: readonly WPane["role"][] = ["list", "placeholder", "viewer", "frame", "caption", "glow"];
 
 /** `list-panes -a -F LAYOUT_FORMAT` read back. Lines of any other shape are left out. */
 export function parseLayout(out: string): Layout {
@@ -269,11 +274,13 @@ export function parseLayout(out: string): Layout {
         look: look === CLASSIC ? "classic" : "tiled",
         frame: null,
         caption: null,
+        glow: null,
       };
       if (window !== view.window) continue;
       if (pane.role === "list") view.list ??= pane;
       else if (pane.role === "frame") view.frame ??= pane;
       else if (pane.role === "caption") view.caption ??= pane;
+      else if (pane.role === "glow") view.glow ??= pane;
       // A session over a viewer over a placeholder, if there's ever more than one (never left like that).
       else if (!view.stage || (view.stage.role === "placeholder" && pane.role !== "placeholder") || (view.stage.role === "viewer" && !pane.role)) view.stage = pane;
     }
@@ -395,20 +402,24 @@ const BORDER = "fg=colour248,bg=colour236";
 const ACTIVE_NAME = "#[fg=colour110#,bold]";
 const NAME_STYLE = "#[fg=colour248#,nobold]";
 
-/** What the classic look's frame runs (./frame-pane.ts; `caption`: the caption's words), by the Node running this. Nothing else on its command line. */
-const frameCommand = (caption = false) => [...programArgv("frame"), tmuxPath() ?? "tmux", ...(caption ? ["caption"] : [])].map(tmuxArg);
+/** What the classic look's frame runs (./frame-pane.ts; `caption`: the caption's words; `glow`: the glow's rows), by the Node running this. Nothing else on its command line. */
+const frameCommand = (mode?: "caption" | "glow") => [...programArgv("frame"), tmuxPath() ?? "tmux", ...(mode ? [mode] : [])].map(tmuxArg);
+
+/**
+ * A pane over the boxes that never takes the keyboard: the caption or the glow, by its role, or by
+ * its title from the moment it's made (before its role is set).
+ */
+const OVERLAY = `#{||:#{||:#{==:#{${ROLE}},caption},#{==:#{${ROLE}},glow}},#{||:#{==:#{pane_title},${CAPTION_TITLE}},#{==:#{pane_title},${GLOW_TITLE}}}}`;
 
 // The classic look's titles, on each box's top border: bold, light on the box with the keyboard,
 // dimmer on the other (the border's colour follows it too: pane-active-border-style). The list's
 // box is "Sessions"; the stage's has the agent mark of the session shown (MARK, in its agent's
 // colour, set by the app) and its name, or Kiko's for its page; an outside session's (a viewer)
-// where it runs after it, dimmed (PLACE: "pixie · in Ghostty"). The caption has none.
+// where it runs after it, dimmed (PLACE: "pixie · in Ghostty"). The caption and the glow have none.
 const TITLE_STYLE = `#{?pane_active,#[fg=${TITLE}#,bold],#[fg=${TITLE_REST}#,bold]}`;
 /** " · in Ghostty", dimmed, for a pane with a PLACE; nothing for any other. */
 const PLACE_PART = `#{?#{${PLACE}},#[nobold#,dim] · #{${PLACE}},}`;
-export const CLASSIC_TITLE =
-  `#{?#{==:#{${ROLE}},caption},,#{?#{==:#{pane_title},${CAPTION_TITLE}},, ${TITLE_STYLE}` +
-  `#{?#{==:#{${ROLE}},list},Sessions,#{E:${MARK}}${TITLE_STYLE}#{?#{${LABEL}},#{${LABEL}},#{pane_title}}${PLACE_PART}} #[default]}}`;
+export const CLASSIC_TITLE = `#{?${OVERLAY},, ${TITLE_STYLE}` + `#{?#{==:#{${ROLE}},list},Sessions,#{E:${MARK}}${TITLE_STYLE}#{?#{${LABEL}},#{${LABEL}},#{pane_title}}${PLACE_PART}} #[default]}`;
 
 /** The view's look: tmux's own window options; `classic`, the classic look's (./classic.ts). */
 export function viewOptions(classic = false): string[][] {
@@ -558,7 +569,7 @@ export function dragKeys(): string[][] {
  * (the list's right edge, the stage's left one), kept to the widths boxes() allows (draggedFormat),
  * and both boxes go there (placeFormat). Its own resizes fire it again, which finds them in place.
  */
-const BOX_RESIZED = `#{&&:#{pane_floating_flag},#{?#{||:#{==:#{${ROLE}},caption},#{==:#{pane_title},${CAPTION_TITLE}}},0,1}}`;
+const BOX_RESIZED = `#{&&:#{pane_floating_flag},#{?${OVERLAY},0,1}}`;
 const EDGE = `#{?#{==:#{${ROLE}},list},#{e|+:#{e|+:#{pane_left},#{pane_width}},1},#{e|-:#{pane_left},1}}`;
 export const splitHook = () =>
   commandString([
@@ -581,7 +592,7 @@ export const splitHook = () =>
  * does it (its default MouseDown1Pane). Server-wide, as every binding is.
  */
 const MENU_CLICK = `#{&&:#{==:#{${ROLE}},frame},#{&&:#{e|==:#{mouse_y},#{e|-:#{pane_height},1}},#{&&:#{e|>=:#{${MENU_AT}},1},#{e|>=:#{mouse_x},#{${MENU_AT}}}}}}`;
-const OURS = `#{&&:#{${VIEW}},#{||:#{==:#{${ROLE}},frame},#{||:#{==:#{${ROLE}},caption},#{==:#{pane_title},${CAPTION_TITLE}}}}}`;
+const OURS = `#{&&:#{${VIEW}},#{||:#{==:#{${ROLE}},frame},${OVERLAY}}}`;
 export const clickKey = () => [
   "bind-key",
   "-n",
@@ -603,7 +614,7 @@ export const clickKey = () => [
  * tiled look, whose Tab is tmux's next pane: there are only the two.
  */
 const LIST_ID = `#{P:#{?#{==:#{${ROLE}},list},#{pane_id},}}`;
-const NOT_STAGE = `#{||:#{==:#{${ROLE}},list},#{||:#{==:#{${ROLE}},frame},#{||:#{==:#{${ROLE}},caption},#{==:#{pane_title},${CAPTION_TITLE}}}}}`;
+const NOT_STAGE = `#{||:#{==:#{${ROLE}},list},#{||:#{==:#{${ROLE}},frame},${OVERLAY}}}`;
 const STAGE_ID = `#{P:#{?${NOT_STAGE},,#{pane_id}}}`;
 export const focusRun = (classic: boolean): string[] => (classic ? ["run-shell", "-t", V, "-C", `select-pane -t '#{?#{==:#{${ROLE}},list},${STAGE_ID},${LIST_ID}}'`] : ["select-pane", "-t", `${V}.+`]);
 
@@ -1060,8 +1071,8 @@ async function toClassic(tmux: Tmux, view: View): Promise<void> {
 }
 
 /** A floating pane in the view, in `box`, running `command`; `more`: new-pane's other flags. */
-function floatPane(box: Box, command: string[], more: string[] = []): string[] {
-  return ["new-pane", "-t", V, "-B", "single", ...geometry(box), ...more, "--", ...command];
+function floatPane(box: Box, command: string[], more: string[] = [], border = "single"): string[] {
+  return ["new-pane", "-t", V, "-B", border, ...geometry(box), ...more, "--", ...command];
 }
 
 /** A new placeholder in the stage, right of the list (in the classic look, in the stage's box). */
@@ -1089,7 +1100,8 @@ async function placeNow(tmux: Tmux): Promise<void> {
   const { view } = await describe(tmux);
   if (!view || view.look !== "classic" || view.zoomed || !view.width || !view.height) return;
   const caption = view.caption && !view.caption.dead ? { id: view.caption.id, lines: view.caption.height } : null;
-  const commands = placeCommands({ list: view.list?.id, stage: view.stage?.id, caption }, view.width, view.height, view.listWidth);
+  const glow = view.glow && !view.glow.dead ? view.glow.id : null;
+  const commands = placeCommands({ list: view.list?.id, stage: view.stage?.id, caption, glow }, view.width, view.height, view.listWidth);
   if (commands.length) await tmux(together(...commands));
 }
 
@@ -1107,14 +1119,16 @@ export async function openCaption(tmux: Tmux, lines: number): Promise<string | n
   if (!view || view.look !== "classic" || view.zoomed || !view.width || !view.height) return null;
   if (view.caption && !view.caption.dead) return view.caption.id;
   const border = `fg=${CAPTION_BORDER}`;
-  const box = captionBox(view.width, view.height, lines);
-  const id = (await tmux(floatPane(box, frameCommand(true), ["-d", "-T", CAPTION_TITLE, "-S", border, "-R", border, "-P", "-F", "#{pane_id}"]))).trim();
+  // Over the glow while there's one.
+  const lift = view.glow && !view.glow.dead ? (glowBox(view.width, view.height)?.h ?? 0) : 0;
+  const box = captionBox(view.width, view.height, lines, lift);
+  const id = (await tmux(floatPane(box, frameCommand("caption"), ["-d", "-T", CAPTION_TITLE, "-S", border, "-R", border, "-P", "-F", "#{pane_id}"]))).trim();
   await tmux(setPane(id, ROLE, "caption")).catch(() => "");
   return id;
 }
 
-/** The caption (its pane) sized for `lines` lines in a window this size. */
-export const sizeCaption = (tmux: Tmux, pane: string, size: Size, lines: number) => tmux(together(...captionCommands(pane, captionBox(size.width, size.height, lines))));
+/** The caption (its pane) sized for `lines` lines in a window this size, `lift` lines over the boxes' bottom edge's (the glow's height while there's one). */
+export const sizeCaption = (tmux: Tmux, pane: string, size: Size, lines: number, lift = 0) => tmux(together(...captionCommands(pane, captionBox(size.width, size.height, lines, lift))));
 
 /** The caption gone (you let go); nothing when it's gone already. */
 export const closeCaption = (tmux: Tmux, pane: string): Promise<void> =>
@@ -1122,6 +1136,32 @@ export const closeCaption = (tmux: Tmux, pane: string): Promise<void> =>
     () => {},
     () => {},
   );
+
+// ── The glow (classic look): the voice glow under the caption ──
+
+/**
+ * The glow's band over the window (./classic.ts glowBox): a floating pane with no border, made
+ * without the keyboard (-d, and never selected: clickKey), running the frame's program in its glow
+ * mode, which gets its rows from the app (src/ui/window-glow.ts). Known by its title from the moment
+ * it's made (GLOW_TITLE), its role set after. The one there already, if there is one. Null: no
+ * classic window to show it in (or zoomed: settings), or one too small for it.
+ */
+export async function openGlow(tmux: Tmux): Promise<{ id: string; box: Box } | null> {
+  const { view } = await describe(tmux);
+  if (!view || view.look !== "classic" || view.zoomed || !view.width || !view.height) return null;
+  const box = glowBox(view.width, view.height);
+  if (!box) return null;
+  if (view.glow && !view.glow.dead) return { id: view.glow.id, box };
+  const id = (await tmux(floatPane(box, frameCommand("glow"), ["-d", "-T", GLOW_TITLE, "-P", "-F", "#{pane_id}"], "none"))).trim();
+  await tmux(setPane(id, ROLE, "glow")).catch(() => "");
+  return { id, box };
+}
+
+/** The glow (its pane) to its box. */
+export const sizeGlow = (tmux: Tmux, pane: string, box: Box) => tmux(together(...captionCommands(pane, box)));
+
+/** The glow gone (it faded out); nothing when it's gone already. */
+export const closeGlow = closeCaption;
 
 /**
  * The stage put right, for what DIED_HOOK couldn't do: an ended session whose home is gone is
@@ -1134,9 +1174,10 @@ async function tidyNow(tmux: Tmux): Promise<void> {
   const layout = await describe(tmux);
   const view = layout.view;
   if (!view) return;
-  // The classic look's frame started again if it ended; a caption that ended, gone.
+  // The classic look's frame started again if it ended; a caption or a glow that ended, gone.
   if (view.frame?.dead) await tmux(["respawn-pane", "-k", "-t", view.frame.id, "--", ...frameCommand()]).catch(() => "");
   if (view.caption?.dead) await closeCaption(tmux, view.caption.id);
+  if (view.glow?.dead) await closeGlow(tmux, view.glow.id);
   const stage = view.stage;
   if (stage?.dead) {
     if (stage.role === "placeholder" || stage.role === "viewer") {
@@ -1350,10 +1391,17 @@ export const setBar = (tmux: Tmux, text: string) => tmux(["source-file", "-"], `
 /** `text` as one single-quoted word for tmux's command parser (a config line, source-file). */
 const tmuxQuoted = (text: string) => `'${text.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ").replace(/'/g, `'\\''`)}'`;
 
-/** Zooms `pane` to the whole window (on) or back (off); nothing when it already is. */
+/**
+ * Zooms `pane` to the whole window (on) or back (off); nothing when it already is. Unzoomed, the
+ * classic look's boxes are put back for the window's size now (place): the frame doesn't place them
+ * while zoomed, and the window often resized then (a window made zoomed for the splash or setup, at
+ * the terminal's size less the tiled look's status line, then attached: the boxes a line short).
+ */
 export async function zoom(tmux: Tmux, pane: string, on: boolean): Promise<void> {
   const zoomed = (await tmux(["display", "-p", "-t", pane, "#{window_zoomed_flag}"])).trim() === "1";
-  if (zoomed !== on) await tmux(["resize-pane", "-Z", "-t", pane]);
+  if (zoomed === on) return;
+  await tmux(["resize-pane", "-Z", "-t", pane]);
+  if (!on) await placeNow(tmux);
 }
 
 /**

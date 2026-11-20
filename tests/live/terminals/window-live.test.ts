@@ -135,6 +135,11 @@ describe("the Kiko window, for real", { skip: !TMUX && "tmux isn't installed" },
     // `kiko` started the server: with what a new terminal has, not your shell's (sessions opened later get the server's).
     const serverEnv = await win(["show-environment", "-g"]);
     assert.ok(!serverEnv.includes(SECRET) && !/^MYVAR=/m.test(serverEnv), "your environment isn't the server's");
+    // Made with the list the whole window, for the splash or first-run setup (ui/splash.ts wholeFirst):
+    // the app gives the list its own size back as it starts (ui/window-zoom.ts start), the stand-in
+    // can't, so here, as it would.
+    assert.equal(view!.zoomed, true, "made whole");
+    await zoom(win, view!.list!.id, false);
     const shown = await until(
       () => screen("one"),
       // The bar, and the placeholder (a new window's says the app is starting, until it's ready: the stand-in never is).

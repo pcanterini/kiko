@@ -1,5 +1,5 @@
-// The app's side of the classic look's frame and caption (src/terminals/tmux/frame-pane.ts): a socket the
-// frame's programs connect to, each saying what it is (the frame, the caption), its pane and its
+// The app's side of the classic look's frame, caption and glow (src/terminals/tmux/frame-pane.ts): a socket the
+// frame's programs connect to, each saying what it is (the frame, the caption, the glow), its pane and its
 // size, and getting its lines from then on (src/ui/window-glue.ts renders them: src/ui/classic.ts). The
 // waveform goes many times a second this way, never through tmux's options. The socket is in the
 // app's run folder, only yours (0600 in the 0700 folder, as the page: core/page.ts); its path is
@@ -26,7 +26,7 @@ export function framePath(socket = appSocket()): string {
 }
 
 /** One of the frame's programs, connected: what it is, its pane, its size. */
-type FrameClient = { role: "frame" | "caption"; pane: string; cols: number; rows: number };
+type FrameClient = { role: "frame" | "caption" | "glow"; pane: string; cols: number; rows: number };
 
 export type FrameServer = {
   path: string;
@@ -69,7 +69,7 @@ export function frameServer(path: string, changed: () => void, failed: (why: str
         }
         const cols = Math.floor(Number(m.cols));
         const rows = Math.floor(Number(m.rows));
-        if ((m.role !== "frame" && m.role !== "caption") || !(cols > 0 && cols < 10_000 && rows > 0 && rows < 10_000)) continue;
+        if ((m.role !== "frame" && m.role !== "caption" && m.role !== "glow") || !(cols > 0 && cols < 10_000 && rows > 0 && rows < 10_000)) continue;
         const pane = typeof m.pane === "string" && /^%\d+$/.test(m.pane) ? m.pane : "";
         clients.set(socket, { role: m.role, pane, cols, rows, sent: "" });
         changed();

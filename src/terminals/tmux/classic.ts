@@ -5,6 +5,9 @@
 // window's one line, its last (no header: the boxes start on the first), and puts the boxes back
 // in place when the window resizes. While you dictate, a third box with a red border shows your
 // words over the bottom of the window (the caption): a floating pane too, which never takes the keyboard.
+// Under it while you talk, while Kiko works out where your words go and while it speaks, the voice
+// glow (src/ui/window-glow.ts): a floating pane with no border at all, a band of a few lines resting on
+// the boxes' bottom edge, centred; it never takes the keyboard either.
 //
 //   ┌── Sessions ──────────┐┌── ✻  pixie ──────────────────────────────────────────────────┐
 //   │ 0 ►    Kiko          ││ the real Claude Code, in its own pane                        │
@@ -20,6 +23,7 @@
 // Here: whether this tmux can (asked once), where the boxes go for a window's size, and the look's
 // colours. Imports nothing that loads .env (the CLI and the frame program use it).
 import { envVar, SLUG } from "../../core/name.ts";
+import { GLOW_COLS } from "../../ui/dither-glow.ts";
 import { appOption } from "./tmux.ts";
 
 /** Window: CLASSIC when the window has the classic look (set as it's made, or made over); unset, the tiled one. */
@@ -31,6 +35,8 @@ export const MENU_AT = appOption("menu-at");
 export const FRAME_SOCKET = appOption("frame-socket");
 /** A caption's pane title, given as it's made (tmux's -T): it's known for a caption from its first moment, before its role is set. */
 export const CAPTION_TITLE = `${SLUG}:caption`;
+/** The glow's pane title, likewise (it has no border to show it on). */
+export const GLOW_TITLE = `${SLUG}:glow`;
 
 // The colours (the user's, picked from the preview's: branch look-preview). Two for the borders:
 // the panel with the keyboard, the other. Titles bold, light while focused, dimmer when not.
@@ -119,13 +125,36 @@ export function placeFormat(list: string, stage: string, listW: string): string 
 /** The caption's width for a window this wide, its border included: two thirds of it, at least 40 columns, never past it (the full screen's). */
 export const captionWidth = (cols: number) => Math.min(cols - 4, Math.max(40, Math.round((cols * 2) / 3)));
 
-/** The caption's box for `lines` lines of words: centred, its bottom edge on the line just above the boxes' bottom edge (as the full screen had it). */
-export function captionBox(cols: number, rows: number, lines: number): Box {
+/**
+ * The caption's box for `lines` lines of words: centred, its bottom edge on the line just above the
+ * boxes' bottom edge (as the full screen had it), or `lift` lines higher (over the glow, glowBox's
+ * height, while there's one).
+ */
+export function captionBox(cols: number, rows: number, lines: number, lift = 0): Box {
   const w = captionWidth(cols);
   const h = Math.max(1, lines) + 2;
   const { list } = boxes(cols, rows);
   const boxesBottom = list.y + list.h - 1; // the boxes' bottom border's line
-  return { x: Math.max(0, Math.floor((cols - w) / 2)), y: Math.max(list.y, boxesBottom - h), w, h };
+  return { x: Math.max(0, Math.floor((cols - w) / 2)), y: Math.max(list.y, boxesBottom - h - lift), w, h };
+}
+
+/** The glow in a window under this many lines, or narrower than this, isn't shown: it would hide most of the stage. */
+export const GLOW_MIN_ROWS = 12;
+export const GLOW_MIN_COLS = 40;
+
+/**
+ * The glow's box (no border: the box is its pane) in a window this size: the lines just above the
+ * boxes' bottom edge, the glow rising from it, four of them (three in a window under 24 lines),
+ * centred under the caption, at the glow's natural width (src/ui/dither-glow.ts GLOW_COLS) or the
+ * window's less two columns each side. Null in a window too small for one.
+ */
+export function glowBox(cols: number, rows: number): Box | null {
+  if (rows < GLOW_MIN_ROWS || cols < GLOW_MIN_COLS) return null;
+  const h = rows >= 24 ? 4 : 3;
+  const w = Math.min(GLOW_COLS, cols - 4);
+  const { list } = boxes(cols, rows);
+  const boxesBottom = list.y + list.h - 1;
+  return { x: Math.floor((cols - w) / 2), y: boxesBottom - h, w, h };
 }
 
 /** A floating pane's place and size, as new-pane takes them. */
@@ -134,18 +163,26 @@ export const geometry = (b: Box) => ["-x", String(b.w), "-y", String(b.h), "-X",
 /**
  * The commands that put the boxes (by pane ID) where they go: each shrunk and moved before the
  * other grows, so neither is pushed off the window on the way (tmux keeps a floating pane inside it).
- * `caption`: its pane and how many lines it shows now.
+ * `caption`: its pane and how many lines it shows now; `glow`: its pane (left where it is in a
+ * window too small for it: the app closes it then).
  */
-export function placeCommands(panes: { list?: string | null; stage?: string | null; caption?: { id: string; lines: number } | null }, cols: number, rows: number, dragged = 0): string[][] {
+export function placeCommands(
+  panes: { list?: string | null; stage?: string | null; caption?: { id: string; lines: number } | null; glow?: string | null },
+  cols: number,
+  rows: number,
+  dragged = 0,
+): string[][] {
   const b = boxes(cols, rows, dragged);
   const out: string[][] = [];
   if (panes.list) out.push(["resize-pane", "-t", panes.list, "-x", String(b.list.w), "-y", String(b.list.h)], ["move-pane", "-t", panes.list, "-X", String(b.list.x), "-Y", String(b.list.y)]);
   if (panes.stage) out.push(["move-pane", "-t", panes.stage, "-X", String(b.stage.x), "-Y", String(b.stage.y)], ["resize-pane", "-t", panes.stage, "-x", String(b.stage.w), "-y", String(b.stage.h)]);
-  if (panes.caption) out.push(...captionCommands(panes.caption.id, captionBox(cols, rows, panes.caption.lines)));
+  const glow = panes.glow ? glowBox(cols, rows) : null;
+  if (panes.glow && glow) out.push(...captionCommands(panes.glow, glow));
+  if (panes.caption) out.push(...captionCommands(panes.caption.id, captionBox(cols, rows, panes.caption.lines, glow?.h ?? 0)));
   return out;
 }
 
-/** The caption (its pane) to its box. */
+/** The caption (its pane) to its box; the glow's the same way. */
 export const captionCommands = (pane: string, b: Box) => [
   ["resize-pane", "-t", pane, "-x", String(b.w), "-y", String(b.h)],
   ["move-pane", "-t", pane, "-X", String(b.x), "-Y", String(b.y)],

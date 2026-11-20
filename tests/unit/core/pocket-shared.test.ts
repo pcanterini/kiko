@@ -9,7 +9,7 @@ import "../../setup.ts";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -296,8 +296,12 @@ describe("two starts at once (two checkouts, or Kiko Dev and a test): setup.sh r
     assert.equal(readFileSync(prepFile(venv, "lock"), "utf8").trim(), String(process.pid));
     unlock();
     assert.equal(existsSync(prepFile(venv, "lock")), false);
-    // An empty one (its holder died before writing its pid): taken over too.
+    // An empty one just made: its holder hasn't written its pid yet, so it's waited for, never taken.
     writeFileSync(prepFile(venv, "lock"), "");
+    assert.equal(prepLock(venv, 100), null);
+    // An empty one from a while ago (its holder died before writing its pid): taken over.
+    const old = new Date(Date.now() - 5000);
+    utimesSync(prepFile(venv, "lock"), old, old);
     const again = prepLock(venv, 100);
     assert.ok(again);
     again();

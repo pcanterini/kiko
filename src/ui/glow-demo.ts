@@ -1,6 +1,6 @@
 // `kiko-dev _glow-demo`: the dithered voice glow (./dither-glow.ts, Voice Glow's dither look ported)
-// on its own, at the bottom of the terminal, to see how it looks before it goes anywhere in the
-// window: at its natural size (GLOW_COLS × GLOW_ROWS, the original's chat input, centred), or with
+// on its own, at the bottom of the terminal, to see how it looks at any size (the window has it at
+// a few rows: ./window-glow.ts): at its natural size (GLOW_COLS × GLOW_ROWS, the original's chat input, centred), or with
 // --wide across the whole width (a wider host: the same glow, its band edge to edge). It plays a
 // made-up voice on a loop (a pause, a few phrases of speech, processing, Kiko speaking), or, with
 // --mic, follows the real microphone (the chosen one in the settings, else the system default:

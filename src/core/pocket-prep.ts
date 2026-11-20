@@ -26,7 +26,7 @@
 // KIKO_POCKET_SETUP: a script run in place of pocket/setup.sh (the install test's stand-in: no
 // real 1 GB download in a test).
 import { execFile, spawn } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { envVar, NAME } from "./name.ts";
 import { INSTALLED } from "./app-root.ts";
@@ -171,8 +171,10 @@ export function prepLock(venv: string, waitMs = LOCK_WAIT_MS): (() => void) | nu
     } catch {
       continue; // let go meanwhile: try again
     }
-    // Its holder gone (or it never wrote its pid, and died): taken over.
-    if (!holder || !alive(holder)) {
+    // Its holder gone (or it never wrote its pid, and died): taken over. An empty one is a holder
+    // that may have made it this moment and not written its pid yet (under load, long enough for
+    // another to take it over too, and both start the download): empty and old only.
+    if (holder ? !alive(holder) : leftEmpty(path)) {
       try {
         unlinkSync(path);
       } catch {
@@ -184,6 +186,18 @@ export function prepLock(venv: string, waitMs = LOCK_WAIT_MS): (() => void) | nu
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
   }
 }
+
+/** How long a lock may stay empty while its holder writes its pid (a moment); past that, its holder died first. */
+const EMPTY_LOCK_MS = 1000;
+
+/** The lock, empty, made longer ago than a holder takes to write its pid. */
+const leftEmpty = (path: string) => {
+  try {
+    return Date.now() - statSync(path).mtimeMs > EMPTY_LOCK_MS;
+  } catch {
+    return false; // let go meanwhile: tried again
+  }
+};
 
 const alive = (pid: number) => {
   try {

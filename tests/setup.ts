@@ -5,12 +5,16 @@
 //   logs/latest.jsonl, which only the real app moves) and as its temp folder (TMPDIR: every mkdtemp in a test, and everything a
 //   program it starts puts in the temp folder, launch files included). Deleted when the process
 //   exits, Ctrl+C included, so a test run leaves nothing in the real temp folder. Its name is short:
-//   Unix sockets made inside it have to fit in 103 bytes.
-import { mkdtempSync, rmSync } from "node:fs";
+//   Unix sockets made inside it have to fit in 103 bytes, so it's in /tmp when the temp folder's
+//   own path is long (macOS's /var/folders/…/T/: a tmux socket under it, …/tmux-501/kiko-test-<run>-<label>,
+//   passed the limit, "File name too long").
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
-const root = mkdtempSync(join(tmpdir(), "cbt-"));
+/** The longest temp folder the run's own goes in; past it, /tmp. */
+const SHORT_TMP = 24;
+const root = mkdtempSync(join(tmpdir().length > SHORT_TMP ? "/tmp" : tmpdir(), "cbt-"));
 process.on("exit", () => rmSync(root, { recursive: true, force: true }));
 // Killed (Ctrl+C, the runner giving up on it): exit, so the line above (and tests/support's own
 // cleanups, such as throwaway tmux servers) still run.
@@ -25,7 +29,12 @@ process.env.TMPDIR = root;
 // /tmp with your own. The folder is there already: tmux takes a
 // TMUX_TMPDIR that isn't for none, and uses /tmp. Without one, src/terminals/tmux/tmux.ts refuses to
 // run tmux under the test runner (realServersRefused).
-process.env.TMUX_TMPDIR = root;
+// A program a test started that imports this too (tests/support/window-app.ts, the window's stand-in
+// app, run in a pane of the test's tmux) keeps the test's folder: the servers it has to reach (the
+// window's, KIKO_TMUX_SERVER) are the test's, there. A fresh one of its own made them unreachable
+// ("error connecting to …/cbt-…/cbt-…/tmux-501/…: No such file or directory").
+const inherited = process.env.TMUX_TMPDIR;
+process.env.TMUX_TMPDIR = inherited && basename(inherited).startsWith("cbt-") && existsSync(inherited) ? inherited : root;
 process.chdir(root);
 // Not the repo's .env, nor its logs/ (both are the repo's wherever the app runs from: src/core/app-root.ts).
 process.env.KIKO_ENV_FILE = "";
