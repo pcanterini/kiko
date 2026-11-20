@@ -22,18 +22,12 @@
 // The mouse: the list asks for clicks (src/ui/input.ts), so tmux passes them on after moving the
 // keyboard here; a click shows that page (the keyboard staying here), a right-click on a session
 // opens its menu. The whole pane is drawn as rows of one line each, so a click's row is the line it's on.
-// In the tiled look the voice glow (./window-glow.ts) rises just above the keys (above the card or a
-// note when there's one) while you talk, while Kiko works out where your words go and while it
-// speaks: a few rows taken from the blank ones under the sessions, never from a session's row (a list
-// too long for both shows none), and no rows at all once it has faded out. Its own state, so only it
-// is drawn again at each of its frames. The classic look has it over the window instead (window-classic.ts).
 //
 // In the window's classic look (tmux 3.8 and later: src/terminals/tmux/classic.ts) the list is a box
 // of its own, titled "Sessions" by tmux, and its rows are the full-screen UI's: two lines each (the
 // name, then its state and what it's on, under it), a column in from the border. The cursor's row
 // has a quiet blue background, a little lighter while the list has the keyboard (its focus reports:
 // src/ui/input.ts), its name bold and its second line brighter; the others' second lines dim.
-import { EventEmitter } from "node:events";
 import React, { useEffect, useRef, useState } from "react";
 import { Box, Text, useInput, useStdout, useWindowSize, type Key } from "ink";
 import { log } from "../core/log.ts";
@@ -50,9 +44,6 @@ import { LIST_INDENT } from "./loading.ts";
 import { colorDepth, type ColorDepth } from "./cli-style.ts";
 import { QUIT_AGAIN_MS, quitHintFor, quitsAgain, stillAsking, type QuitBy } from "./quit-again.ts";
 import { Wordmark, wordmarkPulses } from "./wordmark.ts";
-import { GLOW_COLS } from "./dither-glow.ts";
-import { BACKGROUND } from "./marks.ts";
-import { GlowDriver, glowInput, glowPalette, LIST_GLOW_ROWS, listGlowSize } from "./window-glow.ts";
 
 const h = React.createElement;
 
@@ -114,63 +105,6 @@ function useTick(ms: number, on: boolean) {
     const timer = setInterval(() => set((n) => n + 1), ms);
     return () => clearInterval(timer);
   }, [ms, on]);
-}
-
-/** The glow's rows as its loop drew them last, for the rows that show them (GlowLine), told of each frame. */
-class GlowFrames extends EventEmitter {
-  lines: string[] = [];
-}
-
-/** One of the glow's rows: drawn again at each of its frames by itself, so the rest of the list isn't. */
-function GlowLine({ frames, at, pad }: { frames: GlowFrames; at: number; pad: string }) {
-  const [line, setLine] = useState(frames.lines[at] ?? "");
-  useEffect(() => {
-    const follow = () => setLine(frames.lines[at] ?? "");
-    frames.on("frame", follow);
-    follow();
-    return () => void frames.off("frame", follow);
-  }, [frames, at]);
-  return h(Text, { wrap: "truncate-end" }, pad, line);
-}
-
-/**
- * The voice glow in the list, `size` cells (null: no room for it now): whether it shows (changing
- * only as it starts and once it has faded out), and its frames. Its loop (GlowDriver) runs only
- * while it shows; `s` is looked at each render.
- */
-function useListGlow(s: UiState, size: { cols: number; rows: number } | null, depth: ColorDepth): { on: boolean; frames: GlowFrames } {
-  const [on, setOn] = useState(false);
-  const frames = useRef<GlowFrames | null>(null);
-  frames.current ??= new GlowFrames();
-  const latest = useRef({ s, size });
-  latest.current = { s, size };
-  const loop = useRef<GlowDriver | null>(null);
-  const mounted = useRef(true);
-  loop.current ??= new GlowDriver({
-    cols: size?.cols ?? GLOW_COLS,
-    rows: size?.rows ?? LIST_GLOW_ROWS,
-    depth,
-    palette: glowPalette(BACKGROUND),
-    input: () => (latest.current.size ? glowInput(latest.current.s, performance.now() / 1000) : { mode: "idle", level: 0 }),
-    draw: (rows) => {
-      frames.current!.lines = [...rows];
-      frames.current!.emit("frame");
-    },
-    opened: () => mounted.current && setOn(true),
-    closed: () => mounted.current && setOn(false),
-  });
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-      loop.current?.stop();
-    };
-  }, []);
-  useEffect(() => {
-    if (size) loop.current?.resize(size.cols, size.rows);
-    loop.current?.wake();
-  });
-  return { on: Boolean(size) && on, frames: frames.current };
 }
 
 // ── The card: a permission prompt or Claude's questions, held by Kiko ──
@@ -799,15 +733,7 @@ export function WindowList({ s, quitAgainMs = QUIT_AGAIN_MS }: { s: UiState; qui
   // everything the list gives way first (scrolled to keep the cursor's row in view, as always) down
   // to that one row, then the note and the muted line, then the cursor's row, then the keys (the
   // card has its own); only a pane shorter than the card itself cuts it, from its end.
-  const below = !card.length ? [...notes, keysRow] : [...notes.slice(0, Math.max(0, height - card.length - 2)), ...card, ...(card.length < height ? [keysRow] : [])];
-
-  // The glow (tiled look only): its rows from the blank ones, with one blank left above it, or none.
-  const spareRows = height - below.length - top.length;
-  const glowSize = !classic && spareRows >= LIST_GLOW_ROWS + 1 ? listGlowSize(width, height) : null;
-  const glow = useListGlow(s, glowSize, depth);
-  const glowPad = glowSize ? " ".repeat(Math.max(0, Math.floor((width - glowSize.cols) / 2))) : "";
-  const glowRows = glow.on && glowSize ? Array.from({ length: glowSize.rows }, (_, i) => text(`glow${i}`, h(GlowLine, { frames: glow.frames, at: i, pad: glowPad }))) : [];
-  const bottom = [...glowRows, ...below];
+  const bottom = !card.length ? [...notes, keysRow] : [...notes.slice(0, Math.max(0, height - card.length - 2)), ...card, ...(card.length < height ? [keysRow] : [])];
 
   // Exactly `height` rows: the top ones (scrolled to keep the cursor's in view), blank ones, the
   // bottom. With a card, one blank at least between the list and it, while two rows are left.

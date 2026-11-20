@@ -159,7 +159,6 @@ export function refreshSettings() {
     { key: "newSessionMode", label: "Permission mode", raw: config.newSessionMode, value: labelIn(NEW_SESSION_MODES, config.newSessionMode), restart: false },
     menuKeyRow(saved),
     { key: "icons", label: "Nerd Font icons", raw: config.icons, value: labelIn(ICONS, config.icons), restart: false },
-    { key: "voiceGlow", label: "Voice glow", raw: config.voiceGlow, value: onOff(config.voiceGlow), restart: false },
     ...phoneRows(),
     ...updateRows(),
     logsRow(saved),
@@ -325,11 +324,6 @@ const CHANGES: Partial<Record<SettingKey, (next: Settings, value: unknown, label
     // Drawn at once, in the list and the picker; KIKO_ICONS, when set, decides this run.
     next.icons = iconsSetting(value);
     if (envVar("ICONS") === undefined) ui.set({ icons: (config.icons = next.icons) });
-  },
-  voiceGlow: (next, value) => {
-    // Shown (or faded out) at once, in either look.
-    next.voiceGlow = Boolean(value);
-    ui.set({ voiceGlow: (config.voiceGlow = next.voiceGlow) });
   },
   projectsRoot: (next, value) => {
     // Empty: not set, the usual folders.

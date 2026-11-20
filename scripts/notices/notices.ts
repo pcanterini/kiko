@@ -5,9 +5,7 @@
 //     licence text (and NOTICE file, Apache's), read from its folder in node_modules;
 //   - Bun, the runtime `bun build --compile` puts in `kiko`: its own LICENSE.md, kept here in
 //     bun/ for the Bun it was taken from (bun/VERSION), as Bun publishes no other;
-//   - tmux and the libraries built into it: scripts/build-tmux.sh's THIRD-PARTY-NOTICES.txt;
-//   - code ported from other projects into Kiko's own files (PORTED), when one of those files is
-//     in the bundle: where it's from, its copyright and its licence text, kept in ported/.
+//   - tmux and the libraries built into it: scripts/build-tmux.sh's THIRD-PARTY-NOTICES.txt.
 //
 //   node scripts/notices/notices.ts --meta <dist>/meta.json --bun <version> [--tmux <file>] [--out <file>]
 //
@@ -28,30 +26,6 @@ export const SUPPLIED: Record<string, { license: string; from: string }> = {
   "yoga-layout": { license: "MIT", from: "https://github.com/facebook/yoga/blob/v3.2.1/LICENSE" },
   standardwebhooks: { license: "MIT", from: "https://github.com/standard-webhooks/standard-webhooks/blob/c7cd8a9eadf9879d6dca345e168dc8d15d19e487/libraries/LICENSE" },
 };
-
-/**
- * Code ported from other projects into Kiko's own source (not an npm package, so not in the
- * bundle's node_modules): each project, the files of Kiko's that carry it (their headers keep its
- * notice too), and its licence text, as the project publishes it, in ported/<licenseFile>.
- */
-export type Ported = { name: string; version: string; license: string; from: string; files: string[]; licenseFile: string };
-
-export const PORTED: Ported[] = [
-  {
-    name: "voice-glow",
-    version: "0.5.0",
-    license: "MIT",
-    from: "https://github.com/Jakubantalik/Libraries.dev/tree/14ae9d2dad18fcee251f4b06333b492a2a41d2ed/packages/voice-glow",
-    files: ["src/ui/dither-glow.ts", "src/ui/voice-envelope.ts"],
-    licenseFile: "voice-glow.txt",
-  },
-];
-
-/** The ported code a bundle holds: each PORTED entry one of whose files is among its inputs, with its licence text. */
-export function portedIn(inputs: string[], list: Ported[] = PORTED, dir = join(HERE, "ported")): (Ported & { text: string })[] {
-  const has = (file: string) => inputs.some((i) => i === file || i.endsWith(`/${file}`));
-  return list.filter((p) => p.files.some(has)).map((p) => ({ ...p, text: readFileSync(join(dir, p.licenseFile), "utf8") }));
-}
 
 /** Licences that ask nothing but their notice kept (SPDX ids). */
 const PERMISSIVE = new Set(["MIT", "MIT-0", "ISC", "BSD-2-Clause", "BSD-3-Clause", "0BSD", "Apache-2.0", "Unlicense", "CC0-1.0", "BlueOak-1.0.0", "Zlib", "Python-2.0"]);
@@ -176,12 +150,11 @@ function fenced(text: string): string {
   return `${fence}text\n${text.trimEnd()}\n${fence}`;
 }
 
-export type Parts = { packages: Package[]; bun: { version: string; license: string }; tmux?: string; ported?: (Ported & { text: string })[] };
+export type Parts = { packages: Package[]; bun: { version: string; license: string }; tmux?: string };
 
 /** The whole file. */
-export function render({ packages, bun, tmux, ported = [] }: Parts): string {
+export function render({ packages, bun, tmux }: Parts): string {
   const out: string[] = [];
-  let n = 2;
   out.push(
     "# Third-party notices",
     "",
@@ -189,9 +162,8 @@ export function render({ packages, bun, tmux, ported = [] }: Parts): string {
     "",
     `1. [Bun ${bun.version}](#bun), the JavaScript runtime inside the \`${SLUG}\` executable`,
     `2. [JavaScript packages](#javascript-packages) compiled into \`${SLUG}\` (${packages.length})`,
-    ...(ported.length ? [`${++n}. [Ported code](#ported-code): code from other projects in ${NAME}'s own source (${ported.length})`] : []),
-    ...(tmux ? [`${++n}. [tmux](#tmux) and the libraries built into it (\`bin/tmux\`, \`terminfo/\`)`] : []),
-    `${++n}. [Not in this release](#not-in-this-release): what ${NAME} can download later`,
+    ...(tmux ? ["3. [tmux](#tmux) and the libraries built into it (`bin/tmux`, `terminfo/`)"] : []),
+    `${tmux ? 4 : 3}. [Not in this release](#not-in-this-release): what ${NAME} can download later`,
     "",
     "The Swift helpers in `native/` use only macOS's own frameworks.",
     "",
@@ -216,11 +188,6 @@ export function render({ packages, bun, tmux, ported = [] }: Parts): string {
   for (const p of packages) {
     out.push("", `### ${p.name} ${p.version}`, "", `Licence: ${p.license || "none declared"}.${p.homepage ? ` Source: ${p.homepage.replace(/^git\+/, "")}` : ""}`);
     for (const t of p.texts) out.push("", `${t.file}:`, "", fenced(t.text));
-  }
-  if (ported.length) {
-    out.push("", "## Ported code", "", `Code from these projects was ported into ${NAME}'s own source, compiled into \`${SLUG}\` with it. Each file keeps the project's notice in its header too.`);
-    for (const p of ported)
-      out.push("", `### ${p.name} ${p.version}`, "", `Licence: ${p.license}. Source: ${p.from}`, "", `In: ${p.files.map((f) => `\`${f}\``).join(", ")}.`, "", "LICENSE:", "", fenced(p.text));
   }
   if (tmux) out.push("", "## tmux", "", "`bin/tmux` and `terminfo/` (scripts/build-tmux.sh):", "", fenced(tmux));
   out.push(
@@ -273,7 +240,6 @@ async function main(args: string[]): Promise<number> {
   const root = resolve(opt("root") ?? process.cwd());
   const inputs = Object.keys(JSON.parse(readFileSync(meta, "utf8")).inputs ?? {});
   const packages = bundledPackages(inputs, root);
-  const ported = portedIn(inputs);
   const tmuxFile = opt("tmux");
   const out = opt("out");
 
@@ -302,10 +268,9 @@ async function main(args: string[]): Promise<number> {
   for (const c of BUN_CONCERNS) console.error(`notices: needs care: ${c}`);
   if (out) {
     const tmux = tmuxFile ? readFileSync(tmuxFile, "utf8") : undefined;
-    writeFileSync(out, render({ packages, bun: { version: bunVersion, license: readFileSync(join(HERE, "bun", "LICENSE.md"), "utf8") }, tmux, ported }));
+    writeFileSync(out, render({ packages, bun: { version: bunVersion, license: readFileSync(join(HERE, "bun", "LICENSE.md"), "utf8") }, tmux }));
   }
-  const portedSaid = ported.length ? `, ported: ${ported.map((p) => `${p.name} ${p.version}`).join(", ")}` : "";
-  console.error(`notices: ${packages.length} packages in the bundle (${summary(packages)}), Bun ${bunVersion}${tmuxFile ? ", tmux" : ""}${portedSaid}${out ? ` -> ${out}` : ""}`);
+  console.error(`notices: ${packages.length} packages in the bundle (${summary(packages)}), Bun ${bunVersion}${tmuxFile ? ", tmux" : ""}${out ? ` -> ${out}` : ""}`);
   return 0;
 }
 

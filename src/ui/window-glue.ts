@@ -457,9 +457,8 @@ export function startWindow(
       setWindow({ look: w.look });
     } else if (ui.state.window && ui.state.window.look !== w.look) setWindow({ look: w.look });
     if (w.look === "classic") await frame.start();
-    // A caption (or a glow) the app didn't make (one left by a run that stopped mid-word): gone, unless it's this one's.
+    // A caption the app didn't make (one left by a run that stopped mid-word): gone, unless it's this one's.
     if (view.caption && !frame.ownsCaption(view.caption.id)) await win.closeCaption(tmux, view.caption.id);
-    if (view.glow && !frame.ownsGlow(view.glow.id)) await win.closeGlow(tmux, view.glow.id);
     exitedByThemselves(layout);
     await readKey();
     await showAsk();

@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { bundledPackages, concern, missing, PORTED, packageDirOf, portedIn, productionPackages, readPackage, render, SUPPLIED, summary } from "../../../scripts/notices/notices.ts";
+import { bundledPackages, concern, missing, packageDirOf, productionPackages, readPackage, render, SUPPLIED, summary } from "../../../scripts/notices/notices.ts";
 
 const REPO = fileURLToPath(new URL("../../../", import.meta.url));
 const SCRIPT = join(REPO, "scripts", "notices", "notices.ts");
@@ -119,37 +119,6 @@ describe("the packages in a bundle", () => {
   });
 });
 
-describe("ported code", () => {
-  test("listed when one of its files is in the bundle, with its licence text; left out otherwise", () => {
-    const { inputs } = fakeRepo();
-    assert.deepEqual(portedIn(inputs), []);
-    const withGlow = portedIn([...inputs, "src/ui/voice-envelope.ts"]);
-    assert.deepEqual(
-      withGlow.map((p) => p.name),
-      ["voice-glow"],
-    );
-    assert.match(withGlow[0].text, /^MIT License\n\nCopyright \(c\) 2026 Jakub Antalik\n/);
-    // An absolute or ../ path to the same file counts too.
-    assert.equal(portedIn(["../repo/src/ui/dither-glow.ts"]).length, 1);
-    assert.equal(portedIn(["src/ui/dither-glow.tsx"]).length, 0);
-  });
-
-  test("the file: its own section, after the packages, with where it's from, the files and the full licence", () => {
-    const { root, inputs } = fakeRepo();
-    const md = render({ packages: bundledPackages(inputs, root), bun: { version: "9.9.9", license: "Bun" }, tmux: "tmux", ported: portedIn(["src/ui/dither-glow.ts"]) });
-    assert.match(md, /3\. \[Ported code\]\(#ported-code\)[^\n]*\n4\. \[tmux\]\(#tmux\)[^\n]*\n5\. \[Not in this release\]/);
-    assert.match(md, /## JavaScript packages[\s\S]*## Ported code[\s\S]*## tmux/);
-    assert.match(md, /### voice-glow 0\.5\.0\n\nLicence: MIT\. Source: https:\/\/github\.com\/Jakubantalik\/Libraries\.dev\/tree\/[0-9a-f]{40}\/packages\/voice-glow/);
-    assert.match(md, /In: `src\/ui\/dither-glow\.ts`, `src\/ui\/voice-envelope\.ts`\./);
-    assert.ok(md.includes("Copyright (c) 2026 Jakub Antalik"));
-    assert.ok(md.includes('THE SOFTWARE IS PROVIDED "AS IS"'));
-    // Without any: no section, the numbering as before.
-    const none = render({ packages: [], bun: { version: "9.9.9", license: "Bun" } });
-    assert.doesNotMatch(none, /Ported code/);
-    assert.match(none, /\n3\. \[Not in this release\]/);
-  });
-});
-
 describe("the script", () => {
   const run = (args: string[]) => spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8" });
 
@@ -200,19 +169,5 @@ describe("this repo", () => {
     assert.ok(list.length > 10, `${list.length} packages`);
     assert.deepEqual(missing(list), []);
     for (const name of Object.keys(SUPPLIED)) assert.ok(existsSync(join(REPO, "scripts", "notices", "supplied", `${name.replace("/", "__")}.txt`)), name);
-  });
-
-  test("each ported project's licence text is there, and each of its files exists and keeps its notice in its header", () => {
-    for (const p of PORTED) {
-      const licence = readFileSync(join(REPO, "scripts", "notices", "ported", p.licenseFile), "utf8");
-      const holder = licence.match(/^Copyright \(c\) .+$/m)?.[0];
-      assert.ok(holder, p.name);
-      for (const file of p.files) {
-        const head = readFileSync(join(REPO, file), "utf8").slice(0, 6000);
-        assert.ok(head.includes(holder), `${file} keeps "${holder}"`);
-        assert.ok(head.includes("Permission is hereby granted, free of charge"), `${file} keeps the permission notice`);
-        assert.ok(head.includes(p.name), `${file} names ${p.name}`);
-      }
-    }
   });
 });

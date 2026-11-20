@@ -18,7 +18,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { announceCases, askedCases, deferredCases, windowCases } from "./cases/announce.ts";
 import { audioCases, duckCases, handsFreeCases, muteCases } from "./cases/audio.ts";
 import { codexCases } from "./cases/codex.ts";
-import { glowCases } from "./cases/glow.ts";
 import { opencodeCases } from "./cases/opencode.ts";
 import { askCases, blockOverrideCases, guardCases, readOnlyCases } from "./cases/permissions.ts";
 import { offlineCases } from "./cases/offline.ts";
@@ -74,7 +73,6 @@ try {
   await harnessPickCases();
   await t3Cases();
   await opencodeCases();
-  await glowCases();
   begin("no clipboard, all run: no case ran a clipboard command");
   assert.ok(T.ran.length > 0, "programs run are recorded");
   assert.deepEqual(clipboardRuns(), []);

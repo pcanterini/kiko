@@ -212,8 +212,6 @@ export const config = {
   // Each session's agent mark in the lists (ui/marks.ts): plain Unicode glyphs ("unicode", the
   // default), or Nerd Font icons where the agent has one ("nerd": Nerd Fonts 3.5 or newer).
   icons: iconsSetting(settingEnv("icons") ?? saved.icons),
-  // The voice glow in the window (ui/window-glow.ts): on unless turned off. macOS's Reduce motion turns it off too (app.ts).
-  voiceGlow: saved.voiceGlow !== false,
 
   // The phone companion (src/remote/): a WebSocket server on every interface, so a paired phone
   // reaches the Mac at home and through Tailscale. Off unless turned on (Settings → Phone). Off too

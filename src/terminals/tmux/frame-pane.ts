@@ -1,7 +1,6 @@
 // What the classic look's frame pane runs (./classic.ts, ./window.ts): the Kiko window's bottom
 // line, its last, under the boxes (no header: the boxes start on the window's first line); or
-// (`caption`) the caption's box, your words while you dictate; or (`glow`) the voice glow's band
-// under it, its rows as the app draws them (src/ui/window-glow.ts). `node frame-pane.ts <tmux> [caption | glow]`:
+// (`caption`) the caption's box, your words while you dictate. `node frame-pane.ts <tmux> [caption]`:
 // only those on its command line; its environment is the tmux server's, as any pane's (tmux finds
 // its server and this pane from $TMUX and $TMUX_PANE, which it sets), and it reads no settings and
 // no .env (it imports only ./window.ts and ./classic.ts, which don't).
@@ -29,9 +28,7 @@ import { place, ROLE } from "./window.ts";
 import { COMMAND, NAME } from "../../core/name.ts";
 
 const [tmuxPath = "tmux", mode] = process.argv.slice(2);
-const role: "frame" | "caption" | "glow" = mode === "caption" || mode === "glow" ? mode : "frame";
-/** The caption and the glow come and go with the app's words and voice; the frame stays. */
-const passing = role !== "frame";
+const role: "frame" | "caption" = mode === "caption" ? "caption" : "frame";
 const pane = process.env.TMUX_PANE ?? "";
 const out = process.stdout;
 const ESC = "\x1b[";
@@ -43,10 +40,9 @@ const tmux = (args: string[]) => new Promise<string>((resolve) => execFile(tmuxP
 /** As tmux, a refusal rejected (for window.ts, which reads it). */
 const tmuxOrFail = (args: string[]) => new Promise<string>((resolve, reject) => execFile(tmuxPath, ["-u", ...args], { timeout: 5000 }, (err, stdout) => (err ? reject(err) : resolve(String(stdout)))));
 
-// What it shows: the frame's line, the caption's words or the glow's rows; and whether an app has sent any.
+// What it shows: the frame's line, or the caption's words; and whether an app has sent any.
 let bottom = "";
 let words: string[] = [];
-let glow: string[] = [];
 let heard = false;
 let menuAt = -1;
 let socket: Socket | null = null;
@@ -61,8 +57,6 @@ function paint(clear = false) {
   let s = `${ESC}?2026h${ESC}?7l${clear ? `${ESC}2J` : ""}`;
   if (role === "caption") {
     for (let i = 0; i < rows; i++) s += `${ESC}${i + 1};1H${ESC}2K${words[i] !== undefined ? ` ${ESC}37m${words[i]}${RESET}` : ""}`;
-  } else if (role === "glow") {
-    for (let i = 0; i < rows; i++) s += `${ESC}${i + 1};1H${glow[i] ?? ""}${RESET}${ESC}K`;
   } else {
     const line = socket && heard ? bottom : heard ? ` ${DIM}● ${NAME} isn't running · run ${COMMAND} to start it here${RESET}` : ` ${DIM}${NAME} is starting…${RESET}`;
     s += `${ESC}${rows};1H${ESC}2K${line}${RESET}`;
@@ -73,7 +67,7 @@ function paint(clear = false) {
 /** Says what this is and its size to the app. */
 const hello = () => socket?.write(`${JSON.stringify({ role, pane, ...size() })}\n`);
 
-/** What the app sent: a frame's lines, a caption's words, or the glow's rows. Anything else is passed over. */
+/** What the app sent: a frame's lines, or a caption's words. Anything else is passed over. */
 function take(line: string) {
   let m: { bottom?: unknown; menuAt?: unknown; lines?: unknown };
   try {
@@ -82,7 +76,6 @@ function take(line: string) {
     return;
   }
   if (role === "caption" && Array.isArray(m.lines)) words = m.lines.filter((l): l is string => typeof l === "string").map(plain);
-  else if (role === "glow" && Array.isArray(m.lines)) glow = m.lines.filter((l): l is string => typeof l === "string").map(colours);
   else if (role === "frame" && typeof m.bottom === "string") {
     bottom = colours(m.bottom);
     const at = typeof m.menuAt === "number" ? m.menuAt : -1;
@@ -121,20 +114,19 @@ async function connect() {
     if (socket !== s) return;
     socket = null;
     words = [];
-    glow = [];
     paint();
-    // A caption is the app's words while you talk (the glow its voice): with the app gone (it quit or crashed mid-word), it goes too.
-    if (passing && heard) void gone();
+    // A caption is the app's words while you talk: with the app gone (it quit or crashed mid-word), it goes too.
+    if (role === "caption" && heard) void gone();
   });
 }
 
-/** The caption's (or the glow's) pane closed (this program with it). */
+/** The caption's pane closed (this program with it). */
 async function gone() {
   await tmux(["kill-pane", "-t", pane]);
   tie.end(false);
 }
-// A caption or a glow no app ever spoke to (it quit as it was made): gone too, after a moment.
-if (passing) setTimeout(() => void (heard ? undefined : gone()), 5000).unref();
+// A caption no app ever spoke to (it quit as the caption was made): gone too, after a moment.
+if (role === "caption") setTimeout(() => void (heard ? undefined : gone()), 5000).unref();
 
 let placing: NodeJS.Timeout | null = null;
 function resized() {
@@ -161,7 +153,7 @@ async function handBack() {
   const now = await panes();
   const active = now.find(([, a]) => a === "1");
   const list = now.find(([, , r]) => r === "list")?.[0];
-  if (list && (!active || active[2] === "frame" || active[2] === "caption" || active[2] === "glow")) await tmux(["select-pane", "-t", list]);
+  if (list && (!active || active[2] === "frame" || active[2] === "caption")) await tmux(["select-pane", "-t", list]);
 }
 
 // Ended with its terminal; the screen put back on the way out while there's one.

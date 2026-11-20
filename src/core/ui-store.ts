@@ -69,7 +69,6 @@ export type SettingKey =
   | "newSessionMode"
   | "menuKey"
   | "icons"
-  | "voiceGlow"
   | "phone"
   /** Settings → Phone → Pair a phone: "open" shows the pairing QR code (PairQr), "close" closes it. */
   | "phonePair"
@@ -240,10 +239,6 @@ export type UiState = {
   plan?: { text: string; warn: boolean } | null;
   /** How the agent marks before session names are drawn (the "Nerd Font icons" setting); absent: plain Unicode. */
   icons?: Icons;
-  /** The voice glow in the window (the "Voice glow" setting: ui/window-glow.ts); absent or false: none. */
-  voiceGlow?: boolean;
-  /** macOS's Reduce motion is on (Accessibility → Display): no voice glow, whatever the setting. Absent: off. */
-  reduceMotion?: boolean;
   /** The mode sessions Kiko opens start in (the "Permission mode" setting): a session in another gets a tag in the list. Absent: Accept edits. */
   newSessionMode?: NewSessionMode;
   // The app runs in the Kiko window's list (src/ui/window-glue.ts); null when it doesn't (--plain).

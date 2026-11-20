@@ -322,7 +322,7 @@ export const SETTING_GROUPS: { title: string; keys: string[] }[] = [
   { title: "Permissions", keys: ["guard", "autoAllowReads", "voicePermissions", "permissionWindowMs"] },
   { title: "Decisions", keys: ["classifier", "classifierMinConfidence", "holdUnsure"] },
   { title: "New sessions", keys: ["projectsRoot", "scratchFolder", "newSessionAgent", "newSessionMode"] },
-  { title: `The ${NAME} window`, keys: ["menuKey", "icons", "voiceGlow"] },
+  { title: `The ${NAME} window`, keys: ["menuKey", "icons"] },
   { title: "Phone", keys: [...PHONE_KEYS] },
   // The version running, what's new, and whether new ones install by themselves (core/updates/).
   { title: "Updates", keys: ["updates", "autoUpdate"] },
@@ -383,7 +383,6 @@ export const SETTING_ABOUT: Record<string, string> = {
   newSessionMode: `The permission mode a session ${NAME} opens starts in. Sessions you start yourself aren't touched.`,
   menuKey: `Opens the ${NAME} window's menu, even while you type in a session. Pressed twice, it goes to the session shown.\nIf tmux, herdr or Warp takes it first, ${NAME} uses another and asks.`,
   icons: `Claude Code's and Codex's own icons before session names, instead of plain marks. Needs Nerd Fonts 3.5 or newer:\nbrew install --cask font-symbols-only-nerd-font\nthen add to Ghostty's config:\nfont-family = "Symbols Nerd Font Mono"`,
-  voiceGlow: `A glow at the bottom of the window: it rises with your voice, moves while ${NAME} decides, and follows ${NAME}'s voice.\nOff while macOS's Reduce motion is on.`,
   phone: `The ${NAME} iPhone app: hear, talk, type and answer prompts away from the desk. Only paired phones get in.`,
   phoneConnect: "What to type in the phone app when it doesn't find this Mac by itself. The Tailscale address works from anywhere.",
   get phonePair() {
@@ -580,7 +579,6 @@ export async function choicesFor(key: string, ctx: { tts: string; current: unkno
     case "holdUnsure":
     case "duckMusic":
     case "replyWithoutName":
-    case "voiceGlow":
       return { choices: ON_OFF };
     case "duckLevel":
       return { choices: DUCK_LEVELS };

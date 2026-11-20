@@ -115,8 +115,6 @@ import { watchPocket } from "./app/pocket-switch.ts";
 import { startParts } from "./app/start-parts.ts";
 import { keyOffers } from "./app/key-offer.ts";
 import { keyDown, keyUp, micLive, phoneListeners, setListening } from "./app/talk.ts";
-import { setGlowSpeech } from "./ui/window-glow.ts";
-import { reduceMotion } from "./platform/macos/reduce-motion.ts";
 
 /**
  * A key or click that answers a prompt carries the prompt it was drawn for (its id, and for
@@ -407,7 +405,6 @@ async function main() {
   ui.set({
     about: { voice: voiceName(), model: modelName(), hotkey: config.hotkey, pttMode: config.pttMode, classifier: classifierEnabled() },
     icons: config.icons,
-    voiceGlow: config.voiceGlow,
     newSessionMode: config.newSessionMode,
     playOnMac: config.playOnMac,
     macPlays: macPlays(),
@@ -660,10 +657,6 @@ async function main() {
   const holder = await platform.permissions.holder();
   // Kiko Dev's prototype of the Mac overlay (app/overlay.ts): off in the release.
   startOverlay(heardNow);
-  // The window's voice glow follows Kiko's voice by its sound's level (ui/window-glow.ts), and isn't
-  // drawn while macOS's Reduce motion is on (read once; the window only, not --plain).
-  setGlowSpeech(() => heardNow()?.level ?? null);
-  if (!plain) void reduceMotion().then((on) => on && ui.set({ reduceMotion: true }));
   void checkMic({
     mic: async () => (await platform.permissions.status()).mic,
     app: holder ?? terminalApp(),

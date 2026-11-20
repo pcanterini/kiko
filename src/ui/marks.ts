@@ -37,8 +37,8 @@ export const slotted = (glyph: string) => glyph + " ".repeat(MARK_SLOT - 1);
 /** A mark as drawn: its glyph (its Nerd Font icon with icons "nerd", where it has one), and its colour (undefined: the terminal's own). */
 export type Mark = { glyph: string; color: string | undefined };
 
-/** The background the colours are for: dark, always for now (above); the voice glow's palette too (window-glow.ts). */
-export const BACKGROUND: "dark" | "light" = "dark";
+/** The background the colours are for: dark, always for now (above). */
+const BACKGROUND: "dark" | "light" = "dark";
 
 /**
  * Whether a glyph can be a mark: one character, one cell as Ink counts it and the terminal places

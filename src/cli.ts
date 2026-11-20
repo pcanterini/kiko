@@ -624,5 +624,4 @@ function runCommand(parsed: Extract<ReturnType<typeof parseCli>, { kind: "run" }
   else if (command === "ls") void run(list());
   else if (command === "trust-scratch") void run(trustScratch());
   else if (command === "_overlay-test") void run(import("./app/overlay.ts").then((o) => o.overlayTest()));
-  else if (command === "_glow-demo") void run(import("./ui/glow-demo.ts").then((g) => g.glowDemo(args)));
 }
