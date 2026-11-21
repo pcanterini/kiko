@@ -36,6 +36,7 @@ import { accountsLive, phoneLive } from "../../core/env.ts";
 import { appAccount } from "../../core/account/app-account.ts";
 import { billingWatcher, planActive, planBadge, planStatus, refusalNotice, reminderNotice } from "../../core/account/plan-words.ts";
 import { keyOf } from "../../core/key-values.ts";
+import { aiUseNow } from "../../core/config.ts";
 import { copyText } from "../../core/copy.ts";
 import { log } from "../../core/log.ts";
 import { modelCalls } from "../../core/model-route.ts";
@@ -147,8 +148,9 @@ export function accountRows(): SettingRow[] {
   const raw: AccountRow = { signedIn, confirming: signedIn && confirming, phones, ...(pro ? { billing: true } : {}), ...(phase ? { signing: phase } : {}) };
   const value = view.state === "signed-in" ? (view.email ?? "Signed in") : view.revoked ? `Signed out on ${DOMAIN}` : "Not signed in";
   // Its pane: who's signed in and the plan as last known (the trial's days and share used, Pro's
-  // month, ended; or your own key running the AI instead), or what signing out does while it asks.
-  const facts = accountFacts(view, { ownKey: ownKey(), confirming: raw.confirming, signIn: signing?.shown, copied: signing?.copied });
+  // month, ended), your own keys in use and which one pays (config.ts aiUseNow: what runs now), or
+  // what signing out does while it asks.
+  const facts = accountFacts(view, { use: aiUseNow(), confirming: raw.confirming, signIn: signing?.shown, copied: signing?.copied });
   return [{ key: "account", label: `${NAME} account`, raw: JSON.stringify(raw), value, restart: false, facts }];
 }
 

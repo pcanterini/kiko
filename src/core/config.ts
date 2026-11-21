@@ -6,7 +6,8 @@ import { appEnv, phoneLive, settingEnv } from "./env.ts";
 import { envVar, PHONE_PORT, RELAY_URL, setSpokenName } from "./name.ts";
 import { newSessionModeChosen, newSessionModeSetting } from "./permission-mode.ts";
 import { iconsSetting, loadSettings, newSessionSetting, scratchFolderOf, summaryLengthOf, type ListenMode, type Settings, type VoiceCan } from "./settings.ts";
-import { fillKeys, hasModel, KEY_NAMES, keysInUse, pickEngines } from "./keys.ts";
+import { fillKeys, hasModel, KEY_NAMES, KEYS, keysInUse, pickEngines } from "./keys.ts";
+import { type AiUse, aiUse } from "./account/key-words.ts";
 import { keyOf } from "./key-values.ts";
 import { pocketInstalled } from "./pocket-tts.ts";
 import { OPENROUTER_HAIKU } from "./openrouter-llm.ts";
@@ -236,6 +237,24 @@ export const config = {
   // How long Cartesia may wait for more text before speaking what it has.
   cartesiaBufferMs: Number(appEnv("CARTESIA_BUFFER_MS") ?? 250),
 };
+
+/**
+ * What Kiko's AI runs on in this run, now (account/key-words.ts aiUse): the model config.llm routes
+ * and summarizes with, the quick checks (on unless Settings turned them off), the speech-to-text and
+ * voice running, the keys in use (keysInUse) and whether the account's plan runs the AI (as last
+ * known). Asked each time it's shown (Settings → Account and → Keys, the phone's `account`).
+ */
+export function aiUseNow(): AiUse {
+  const env = keysInUse();
+  return aiUse({
+    llm: config.llm,
+    classifier: loadSettings().classifier !== false,
+    keys: KEYS.filter((k) => env[k.env]).map((k) => k.id),
+    planRuns: accountRunsModels(),
+    stt: config.stt,
+    tts: config.tts,
+  });
+}
 
 export const MIC_SAMPLE_RATE = 16000;
 export const TTS_SAMPLE_RATE = 24000;

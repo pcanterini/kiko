@@ -21,6 +21,13 @@ const { render } = await import("ink");
 const { Settings } = await import("../../../src/ui/settings.ts");
 const { ui } = await import("../../../src/core/ui-store.ts");
 const { accountChoices, accountFacts } = await import("../../../src/core/settings-options.ts");
+const { aiUse } = await import("../../../src/core/account/key-words.ts");
+type AiUse = import("../../../src/core/account/key-words.ts").AiUse;
+
+/** Made-up setups: what Kiko's AI runs on (key-words.ts aiUse), by the keys set and the model picked. */
+const OPENROUTER_ONLY = aiUse({ llm: "anthropic/claude-haiku", classifier: true, keys: ["openrouter"], planRuns: false });
+const BOTH_ON_ANTHROPIC = aiUse({ llm: "haiku", classifier: true, keys: ["anthropic", "openrouter"], planRuns: false });
+const ANTHROPIC_ONLY = (planRuns: boolean) => aiUse({ llm: "haiku", classifier: true, keys: ["anthropic"], planRuns });
 
 const DAY = 86_400_000;
 const now = Date.UTC(2026, 10, 20, 12);
@@ -52,12 +59,12 @@ const NEIGHBOURS: SettingRow[] = [
 ];
 
 /** Settings → Account's row for `view`, as app/settings/account.ts accountRows makes it. */
-function accountRow(view: AccountView, o: { ownKey?: boolean; phones?: number; confirming?: boolean } = {}): SettingRow {
+function accountRow(view: AccountView, o: { use?: AiUse; phones?: number; confirming?: boolean } = {}): SettingRow {
   const signed = view.state === "signed-in";
   const pro = signed && view.plan?.name === "pro";
   const raw: AccountRow = { signedIn: signed, confirming: signed && Boolean(o.confirming), phones: o.phones ?? 0, ...(pro ? { billing: true } : {}) };
   const value = signed ? (view.email ?? "Signed in") : view.revoked ? "Signed out on kiko.sh" : "Not signed in";
-  const facts = accountFacts(view, { ownKey: Boolean(o.ownKey), confirming: raw.confirming, now });
+  const facts = accountFacts(view, { use: o.use ?? null, confirming: raw.confirming, now });
   return { key: "account", label: "Kiko account", raw: JSON.stringify(raw), value, restart: false, facts };
 }
 
@@ -120,6 +127,14 @@ async function check(row: SettingRow, want: { rows: string[]; actions: string[];
   }
 }
 
+/** As check, for rows that wrap differently at 80 and 120 columns: the rows at each. */
+async function checkEach(row: SettingRow, want: { 80: string[]; 120: string[]; actions: string[] }) {
+  for (const width of [80, 120] as const) {
+    const got = await pane(row, width);
+    assert.deepEqual(got.lines, [...want[width], ...actions(width, ...want.actions)], `${width} columns`);
+  }
+}
+
 const SIGN_OUT = "Sign out on this Mac  other Macs stay signed in";
 const SIGN_IN = "Sign in   in your browser, with a code";
 const BILLING = "Manage billing        card, invoices, cancelling · opens your browser";
@@ -174,14 +189,14 @@ describe("Settings → Account, every plan state at 80 and 120 columns", () => {
 
   test("Pro renewing: when, then this month's share with the weekly pace; Manage billing", async () => {
     await check(accountRow(signedIn(proPlan(0.31))), {
-      rows: ["  Signed in   name@example.com", "  Plan        Kiko Pro · renews 3 Dec", "  This month  31% used · this week 12%, on track"],
+      rows: ["  Signed in   name@example.com", "  Plan        Kiko Pro (monthly) · renews 3 Dec", "  This month  31% used · this week 12%, on track"],
       actions: ["Leave it", BILLING, SIGN_OUT],
     });
   });
 
   test("Pro near its month's allowance: the month in yellow, the pace said", async () => {
     await check(accountRow(signedIn(proPlan(0.85, { pace: "fast", weekShare: 0.4 }))), {
-      rows: ["  Signed in   name@example.com", "  Plan        Kiko Pro · renews 3 Dec", "  This month  85% used · this week 40%, faster than usual"],
+      rows: ["  Signed in   name@example.com", "  Plan        Kiko Pro (monthly) · renews 3 Dec", "  This month  85% used · this week 40%, faster than usual"],
       actions: ["Leave it", BILLING, SIGN_OUT],
       yellow: ["85% used · this week 40%, faster than usual"],
     });
@@ -189,9 +204,9 @@ describe("Settings → Account, every plan state at 80 and 120 columns", () => {
 
   test("Pro cancelled: when it ends, in yellow", async () => {
     await check(accountRow(signedIn(proPlan(0.31, { cancelAt: DEC_3, renewsAt: null }))), {
-      rows: ["  Signed in   name@example.com", "  Plan        Kiko Pro · ends 3 Dec", "  This month  31% used · this week 12%, on track"],
+      rows: ["  Signed in   name@example.com", "  Plan        Kiko Pro (monthly) · ends 3 Dec", "  This month  31% used · this week 12%, on track"],
       actions: ["Leave it", BILLING, SIGN_OUT],
-      yellow: ["Kiko Pro · ends 3 Dec"],
+      yellow: ["Kiko Pro (monthly) · ends 3 Dec"],
     });
   });
 
@@ -199,12 +214,12 @@ describe("Settings → Account, every plan state at 80 and 120 columns", () => {
     await check(accountRow(signedIn(proPlan(0.31, { paymentFailed: { graceEndsAt: NOV_27 } }))), {
       rows: [
         "  Signed in   name@example.com",
-        "  Plan        Kiko Pro · payment failed",
+        "  Plan        Kiko Pro (monthly) · payment failed",
         "              Update your card in Manage billing before Pro stops on 27 Nov.",
         "  This month  31% used · this week 12%, on track",
       ],
       actions: ["Leave it", BILLING, SIGN_OUT],
-      yellow: ["Kiko Pro · payment failed"],
+      yellow: ["Kiko Pro (monthly) · payment failed"],
     });
   });
 
@@ -212,7 +227,7 @@ describe("Settings → Account, every plan state at 80 and 120 columns", () => {
     await check(accountRow(signedIn(proPlan(1))), {
       rows: [
         "  Signed in   name@example.com",
-        "  Plan        Kiko Pro · renews 3 Dec",
+        "  Plan        Kiko Pro (monthly) · renews 3 Dec",
         "  This month  100% used · paused until 3 Dec",
         "              Your own OpenRouter key keeps Kiko going meanwhile:",
         "              kiko-dev keys set openrouter",
@@ -222,30 +237,58 @@ describe("Settings → Account, every plan state at 80 and 120 columns", () => {
     });
   });
 
-  test("your own key, no plan: said plainly", async () => {
-    await check(accountRow(signedIn(NO_PLAN), { ownKey: true }), {
-      rows: ["  Signed in  name@example.com", "  Plan       Using your own OpenRouter key"],
+  test("your own key, no plan: the plan, and the key in its own row", async () => {
+    await check(accountRow(signedIn(NO_PLAN), { use: OPENROUTER_ONLY }), {
+      rows: ["  Signed in  name@example.com", "  Plan       No plan", "  Keys       Your own OpenRouter key"],
       actions: ["Leave it", SIGN_OUT],
     });
   });
 
-  test("your own key with a trial: the key, and that the trial isn't used", async () => {
-    await check(accountRow(signedIn(trialPlan(6, 0.03)), { ownKey: true }), {
-      rows: ["  Signed in  name@example.com", "  Plan       Using your own OpenRouter key", "             The free trial isn't used while a key is set."],
+  test("your own key with a trial: the trial, that it isn't used, and the key", async () => {
+    const top = ["  Signed in  name@example.com", "  Plan       Free trial · 6 days left"];
+    await checkEach(accountRow(signedIn(trialPlan(6, 0.03)), { use: OPENROUTER_ONLY }), {
+      80: [...top, "             Your own OpenRouter key is in use, so the free trial isn't", "             being used.", "  Keys       Your own OpenRouter key"],
+      120: [...top, "             Your own OpenRouter key is in use, so the free trial isn't being", "             used.", "  Keys       Your own OpenRouter key"],
       actions: ["Leave it", SIGN_OUT],
     });
   });
 
   test("your own key with Pro (cancelled; a phone paired): Pro still shown with its colour, why it isn't used, and no month's share", async () => {
-    await check(accountRow(signedIn(proPlan(0.31, { cancelAt: DEC_3, renewsAt: null })), { ownKey: true, phones: 1 }), {
+    await check(accountRow(signedIn(proPlan(0.31, { cancelAt: DEC_3, renewsAt: null })), { use: OPENROUTER_ONLY, phones: 1 }), {
       rows: [
         "  Signed in  name@example.com",
-        "  Plan       Kiko Pro · ends 3 Dec",
+        "  Plan       Kiko Pro (monthly) · ends 3 Dec",
         "             Your own OpenRouter key is in use, so Pro isn't being used.",
         "             To use Pro: kiko-dev keys remove openrouter",
+        "  Keys       Your own OpenRouter key",
       ],
       actions: ["Leave it", BILLING, "Sign out on this Mac  asks first: a phone is paired"],
-      yellow: ["Kiko Pro · ends 3 Dec"],
+      yellow: ["Kiko Pro (monthly) · ends 3 Dec"],
+    });
+  });
+
+  test("signed out with both keys, Haiku on Anthropic routing: which key does what", async () => {
+    const top = ["  Not signed in.", "  Your own keys never need an account."];
+    await checkEach(accountRow({ state: "signed-out", revoked: false }, { use: BOTH_ON_ANTHROPIC }), {
+      80: [...top, "  Keys  Your own keys: Anthropic for routing and summaries, OpenRouter for", "        quick checks"],
+      120: [...top, "  Keys  Your own keys: Anthropic for routing and summaries, OpenRouter for quick", "        checks"],
+      actions: [SIGN_IN, "Leave it"],
+    });
+  });
+
+  test("your Anthropic key with Pro: Pro runs the quick checks, its month shown, and how to use it for both", async () => {
+    await check(accountRow(signedIn(proPlan(0.31)), { use: ANTHROPIC_ONLY(true) }), {
+      rows: [
+        "  Signed in   name@example.com",
+        "  Plan        Kiko Pro (monthly) · renews 3 Dec",
+        "              Pro runs the quick checks; your own Anthropic key runs routing",
+        "              and summaries.",
+        "              To use Pro for both: kiko-dev keys remove anthropic",
+        "  This month  31% used · this week 12%, on track",
+        "  Keys        Your own Anthropic key for routing and summaries; Kiko Pro for",
+        "              quick checks",
+      ],
+      actions: ["Leave it", BILLING, SIGN_OUT],
     });
   });
 
@@ -293,7 +336,7 @@ describe("Settings → Account, every plan state at 80 and 120 columns", () => {
     process.env.KIKO_ACCOUNTS = "1";
     process.env.KIKO_PRO = "1";
     try {
-      assert.deepEqual(accountFacts(signedIn(proPlan(0.31)), { ownKey: false, confirming: true, now })[1].more, ["Other Macs stay signed in. Your phone stops working until this Mac signs in again."]);
+      assert.deepEqual(accountFacts(signedIn(proPlan(0.31)), { use: null, confirming: true, now })[1].more, ["Other Macs stay signed in. Your phone stops working until this Mac signs in again."]);
     } finally {
       delete process.env.KIKO_ACCOUNTS;
       delete process.env.KIKO_PRO;

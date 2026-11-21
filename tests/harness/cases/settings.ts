@@ -1421,13 +1421,15 @@ export async function accountCases() {
     ui.act({ type: "settings" });
     assert.equal(row()?.label, "Kiko account");
     assert.equal(row()?.value, "Not signed in");
-    assert.deepEqual(row()?.facts, [{ value: "Not signed in.", more: ["Your own keys never need an account."] }]);
+    // The harness's own made-up Anthropic key (run.sh) routes, with no OpenRouter key: said under it.
+    const ANT_ONLY = { label: "Keys", value: "Your own Anthropic key (quick checks off: they need OpenRouter)" };
+    assert.deepEqual(row()?.facts, [{ value: "Not signed in.", more: ["Your own keys never need an account."] }, ANT_ONLY]);
     assert.equal(row()?.note, undefined, "no line of its own: the pane's rows say it");
     ui.act({ type: "closeSettings" });
     writeFileSync("account.json", JSON.stringify({ email: "name@example.com", since: Date.now() }));
     ui.act({ type: "settings" });
     assert.equal(row()?.value, "name@example.com");
-    assert.deepEqual(row()?.facts, [{ label: "Signed in", value: "name@example.com" }], "nothing on record of a plan yet: no Plan row");
+    assert.deepEqual(row()?.facts, [{ label: "Signed in", value: "name@example.com" }, ANT_ONLY], "nothing on record of a plan yet: no Plan row");
     assert.deepEqual(
       filterSettings(ui.state.settings, "account")
         .find((g) => g.title === "Account")
@@ -1460,7 +1462,7 @@ export async function accountCases() {
         ],
       );
       ui.act({ type: "set", key: "account", value: "keep" });
-      await until(() => row()?.facts?.length === 1);
+      await until(() => row()?.facts?.length === 2 && row()?.facts?.[1].label === "Keys");
       assert.ok(existsSync("account.json"), "still signed in");
     } finally {
       pairing.list = list;
@@ -1491,10 +1493,18 @@ export async function accountCases() {
     });
     writeFileSync("account.json", JSON.stringify(trial(6, 0.03)));
     ui.act({ type: "settings" });
+    // The harness's own made-up Anthropic key routes (KIKO_LLM=haiku, run.sh), with no OpenRouter
+    // key: the trial runs the quick checks, so it's in use, and which pays for what is said.
     assert.deepEqual(row()?.facts, [
       { label: "Signed in", value: "name@example.com" },
-      { label: "Plan", value: "Free trial · 6 days left", warn: false },
+      {
+        label: "Plan",
+        value: "Free trial · 6 days left",
+        more: ["The free trial runs the quick checks; your own Anthropic key runs routing and summaries."],
+        warn: false,
+      },
       { label: "Used", value: "3% of the trial", warn: false },
+      { label: "Keys", value: "Your own Anthropic key for routing and summaries; the free trial for quick checks" },
     ]);
     assert.ok(
       filterSettings(ui.state.settings, "free trial").some((g) => g.title === "Account"),
@@ -1507,13 +1517,20 @@ export async function accountCases() {
     refreshPlan(appAccount());
     assert.deepEqual(ui.state.plan, { text: "trial · 2d left", warn: true }, "yellow in its last two days");
     ui.act({ type: "settings" });
-    assert.deepEqual(row()?.facts?.[1], { label: "Plan", value: "Free trial · 2 days left", warn: true }, "and in Settings, on the days");
+    assert.deepEqual(
+      row()?.facts?.[1],
+      { label: "Plan", value: "Free trial · 2 days left", more: ["The free trial runs the quick checks; your own Anthropic key runs routing and summaries."], warn: true },
+      "and in Settings, on the days",
+    );
     ui.act({ type: "closeSettings" });
-    // A key of your own: it runs the AI, said plainly, and no item on the window's line.
+    // An OpenRouter key of your own too: your keys run all of it, said plainly, and no item on the window's line.
     process.env.OPENROUTER_API_KEY = "sk-or-test-not-real";
     try {
       ui.act({ type: "settings" });
-      assert.deepEqual(row()?.facts?.[1], { label: "Plan", value: "Using your own OpenRouter key", more: ["The free trial isn't used while a key is set."] });
+      assert.deepEqual(row()?.facts?.slice(1), [
+        { label: "Plan", value: "Free trial · 2 days left", more: ["Your own keys are in use, so the free trial isn't being used."] },
+        { label: "Keys", value: "Your own keys: Anthropic for routing and summaries, OpenRouter for quick checks" },
+      ]);
       ui.act({ type: "closeSettings" });
       refreshPlan(appAccount());
       assert.equal(ui.state.plan, null);
@@ -1527,7 +1544,8 @@ export async function accountCases() {
     };
     writeFileSync("account.json", JSON.stringify(ended));
     ui.act({ type: "settings" });
-    assert.deepEqual(row()?.facts?.[1], { label: "Plan", value: "Trial ended on 10 Nov", more: ["To go on, add your own OpenRouter key (free):", "kiko-dev keys set openrouter"] });
+    // Your Anthropic key runs the AI already: the trial ended, and nothing to go on with (the Keys row says what's off).
+    assert.deepEqual(row()?.facts?.slice(1), [{ label: "Plan", value: "Trial ended on 10 Nov" }, ANT_ONLY]);
     ui.act({ type: "closeSettings" });
     refreshPlan(appAccount());
     assert.equal(ui.state.plan, null);
@@ -1661,9 +1679,13 @@ async function proCases() {
   try {
     writeFileSync("account.json", JSON.stringify(pro(0.31)));
     ui.act({ type: "settings" });
+    // The harness's made-up Anthropic key routes (KIKO_LLM=haiku, run.sh) with no OpenRouter key:
+    // Pro runs the quick checks, so its month shows, with which pays for what.
+    const USE_PRO = ["Pro runs the quick checks; your own Anthropic key runs routing and summaries.", "To use Pro for both: kiko-dev keys remove anthropic"];
     assert.deepEqual(row()?.facts?.slice(1), [
-      { label: "Plan", value: "Kiko Pro · renews 3 Dec", warn: false },
+      { label: "Plan", value: "Kiko Pro (monthly) · renews 3 Dec", warn: false, more: USE_PRO },
       { label: "This month", value: "31% used · this week 12%, on track", warn: false },
+      { label: "Keys", value: "Your own Anthropic key for routing and summaries; Kiko Pro for quick checks" },
     ]);
     // Not on sale: Manage billing all the same (managing isn't buying: whenever accounts are on, since 2026-11-04).
     assert.deepEqual(
@@ -1681,11 +1703,16 @@ async function proCases() {
     ui.act({ type: "closeSettings" });
     writeFileSync("account.json", JSON.stringify(pro(0.31, { cancelAt: renews, renewsAt: null })));
     ui.act({ type: "settings" });
-    assert.deepEqual(row()?.facts?.[1], { label: "Plan", value: "Kiko Pro · ends 3 Dec", warn: true }, "cancelled: yellow, on the plan");
+    assert.deepEqual(row()?.facts?.[1], { label: "Plan", value: "Kiko Pro (monthly) · ends 3 Dec", warn: true, more: USE_PRO }, "cancelled: yellow, on the plan");
     ui.act({ type: "closeSettings" });
     writeFileSync("account.json", JSON.stringify(pro(0.31, { paymentFailed: { graceEndsAt: Date.UTC(2026, 10, 27, 12) } })));
     ui.act({ type: "settings" });
-    assert.deepEqual(row()?.facts?.[1], { label: "Plan", value: "Kiko Pro · payment failed", warn: true, more: ["Update your card in Manage billing before Pro stops on 27 Nov."] });
+    assert.deepEqual(row()?.facts?.[1], {
+      label: "Plan",
+      value: "Kiko Pro (monthly) · payment failed",
+      warn: true,
+      more: ["Update your card in Manage billing before Pro stops on 27 Nov.", ...USE_PRO],
+    });
     ui.act({ type: "closeSettings" });
     // "Upgrade to Kiko Pro" while Pro isn't on sale: never a checkout.
     await talk("upgrade to kiko pro");

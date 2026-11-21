@@ -67,10 +67,15 @@ describe("kiko keys", () => {
     const { code, text, out } = await run([], { store, env: { ANTHROPIC_API_KEY: FAKE_ENV }, chosen: { stt: "deepgram", tts: "say", llm: "haiku" } });
     assert.equal(code, 0);
     assert.match(out[0], /^openrouter\s+…aaaa · Keychain\s+the one key: every model and the classifier$/);
-    assert.match(out[1], /^anthropic\s+…eeee · environment\s+optional: Haiku billed to Anthropic directly$/);
-    assert.match(out[2], /also in the Keychain; the environment one wins/);
-    assert.match(out[3], /^deepgram\s+not set\s+speech-to-text with Deepgram \(needed: speech-to-text is Deepgram\)$/);
-    assert.match(out[4], /^cartesia\s+not set/);
+    // What each key does now: Haiku on Anthropic routes (llm "haiku"), OpenRouter runs the quick checks.
+    assert.equal(out[1], `${"".padEnd(11)} Used for quick checks`);
+    assert.match(out[2], /^anthropic\s+…eeee · environment\s+optional: Haiku billed to Anthropic directly$/);
+    assert.equal(out[3], `${"".padEnd(11)} Used for routing and summaries (Haiku)`);
+    assert.match(out[4], /also in the Keychain; the environment one wins/);
+    assert.match(out[5], /^deepgram\s+not set\s+speech-to-text with Deepgram \(needed: speech-to-text is Deepgram\)$/);
+    assert.match(out[6], /^cartesia\s+not set/);
+    // Then what runs on what, Deepgram and the voice included (Deepgram chosen without its key: Apple's).
+    assert.ok(out.includes("What runs on what: Routing and summaries: your Anthropic key; Quick checks: your OpenRouter key; Speech-to-text: Apple's, free; Voice: free."), out.join("\n"));
     for (const key of [FAKE_OR, FAKE_ENV, FAKE_ANT]) assert.ok(!text.includes(key.slice(0, -4)), "never more than the last four characters");
   });
 
@@ -182,7 +187,9 @@ describe("kiko keys and the Kiko account (accounts open)", () => {
   test("signed in with a key of your own: the key wins, said; the trial ended; no plan; Pro", async () => {
     const store = fakeStore({ OPENROUTER_API_KEY: FAKE_OR });
     const a = await run([], { store, account: signedIn(trialPlan(2, 0.5)), now: () => now });
-    assert.ok(a.out.includes("Kiko account: name@example.com · free trial, 2 days left, 50% used (your OpenRouter key wins while it's set)"));
+    const at = a.out.indexOf("Kiko account: name@example.com · free trial, 2 days left, 50% used");
+    assert.ok(at >= 0, a.out.join("\n"));
+    assert.equal(a.out[at + 1], `${"".padEnd(11)} Your own OpenRouter key is in use, so the free trial isn't being used.`);
     const ended = await run([], { account: signedIn(null, { startedAt: now - 8 * DAY, endsAt: now - DAY, ended: true, endedWhy: "time" }), now: () => now, chosen: { llm: "openai/gpt-5.4-nano" } });
     assert.ok(ended.out.includes("Kiko account: name@example.com · free trial ended"));
     assert.match(ended.out[0], /\(needed: the model is on OpenRouter\)/, "no plan running: the key is needed again");
@@ -201,9 +208,34 @@ describe("kiko keys and the Kiko account (accounts open)", () => {
       pro: { interval: "month" as const, renewsAt: Date.UTC(2026, 11, 3, 12), cancelAt: null, paymentFailed: null, weekShare: 0.1, pace: null },
     };
     const p = await run([], { store, account: signedIn(paid), now: () => now });
-    const at = p.out.indexOf("Kiko account: name@example.com · Kiko Pro, renews 3 Dec");
+    const at = p.out.indexOf("Kiko account: name@example.com · Kiko Pro (monthly), renews 3 Dec");
     assert.ok(at >= 0, p.out.join("\n"));
     assert.equal(p.out[at + 1], `${"".padEnd(11)} Your own OpenRouter key is in use, so Pro isn't being used. To use Pro: kiko-dev keys remove openrouter`);
+  });
+
+  test("Pro with both keys and Haiku on Anthropic routing: Pro not used, and both keys to remove to use it", async () => {
+    const store = fakeStore({ OPENROUTER_API_KEY: FAKE_OR, ANTHROPIC_API_KEY: FAKE_ANT });
+    const paid = { ...trialPlan(30, 0.12), name: "pro" as const, pro: { interval: "year" as const, renewsAt: null, cancelAt: null, paymentFailed: null, weekShare: null, pace: null } };
+    const p = await run([], { store, account: signedIn(paid), now: () => now });
+    const at = p.out.indexOf("Kiko account: name@example.com · Kiko Pro (yearly)");
+    assert.ok(at >= 0, p.out.join("\n"));
+    assert.equal(p.out[at + 1], `${"".padEnd(11)} Your own keys are in use, so Pro isn't being used. To use Pro: kiko-dev keys remove anthropic and kiko-dev keys remove openrouter`);
+  });
+
+  test("Pro with only an Anthropic key: Pro runs the quick checks, said under it", async () => {
+    const store = fakeStore({ ANTHROPIC_API_KEY: FAKE_ANT });
+    const pro = { ...trialPlan(30, 0.12), name: "pro" as const };
+    const p = await run([], { store, account: signedIn(pro), now: () => now });
+    const at = p.out.indexOf("Kiko account: name@example.com · Kiko Pro, 12% of this month used");
+    assert.ok(at >= 0, p.out.join("\n"));
+    assert.equal(p.out[at + 1], `${"".padEnd(11)} Pro runs the quick checks; your own Anthropic key runs routing and summaries. To use Pro for both: kiko-dev keys remove anthropic`);
+    assert.ok(p.out.includes("What runs on what: Routing and summaries: your Anthropic key; Quick checks: Kiko Pro; Speech-to-text: Apple's, free; Voice: free."), p.out.join("\n"));
+  });
+
+  test("quick checks turned off in Settings: said for the OpenRouter key", async () => {
+    const store = fakeStore({ OPENROUTER_API_KEY: FAKE_OR });
+    const { out } = await run([], { store, classifier: false, chosen: { llm: "openai/gpt-5.4-nano" } });
+    assert.equal(out[1], `${"".padEnd(11)} Used for routing and summaries (quick checks off in Settings)`);
   });
 
   test("in colour: the label bold, the aside dim", async () => {

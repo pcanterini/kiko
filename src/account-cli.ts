@@ -28,7 +28,8 @@ import { execFile } from "node:child_process";
 import { dirname, join } from "node:path";
 import { Account, NewCode, NOT_OPEN_LINE, type Renewed, SIGNED_OUT_LINE, type SignIn } from "./core/account/account.ts";
 import { accountClient, type DeviceStart, type Plan, type Trial } from "./core/account/client.ts";
-import { planDetail, planLine, planRunsAi, planStatus, proPausedLine, trialRefusedLine, trialStartedLine } from "./core/account/plan-words.ts";
+import { aiWords, planDetail, planLine, planRunsAi, planStatus, proPausedLine, trialRefusedLine, trialStartedLine } from "./core/account/plan-words.ts";
+import type { AiUse } from "./core/account/key-words.ts";
 import { accountsLive, accountUrl, phoneLive, proOnSale } from "./core/env.ts";
 import { ACCOUNT_SITE, COMMAND, DOMAIN, NAME } from "./core/name.ts";
 import { SETTINGS_FILE } from "./core/settings.ts";
@@ -68,8 +69,11 @@ export type AccountDeps = {
   sale?: boolean;
   /** Enter, Esc (Ctrl+C counts as Esc) and n while something is waited for, to `on`, until the returned stop; none: nothing waited for. */
   keys?: (on: (key: WaitKey) => void) => () => void;
-  /** Your own OpenRouter key is set (the environment, .env or the Keychain): it runs the AI, not the plan. */
-  ownKey?: boolean;
+  /**
+   * What Kiko's AI runs on here, given whether the plan runs it (keys-cli.ts aiUseHere: your own
+   * keys first, then the plan): the plan's line and the Keys line say it. Absent: no keys of yours.
+   */
+  aiUse?: (planRuns: boolean) => AiUse;
 };
 
 /** When a session started, as said: "3 Nov 2026". */
@@ -378,17 +382,25 @@ async function account(args: readonly string[], d: AccountDeps): Promise<number>
   const now = await d.account.check();
   if (now.state === "unknown") return fail(d, now.why);
   const s = d.style ?? PLAIN;
+  // What Kiko's AI runs on (your own keys first, then the plan): the Keys line, as Settings → Account and the phone say it.
+  const use = d.aiUse?.(now.state === "signed-in" && planRunsAi(now.plan)) ?? null;
+  const keysLine = () => {
+    const keys = use ? aiWords(now, use).keys : null;
+    if (keys) d.out(`  Keys: ${keys}.`);
+  };
   if (now.state === "signed-out") {
     d.out(now.revoked ? s.warn(SIGNED_OUT_LINE) : `Not signed in. ${s.dim(`${COMMAND} login signs in: an account is only for the free trial, and your own key needs none.`)}`);
+    keysLine();
     return 0;
   }
   d.out(s.ok(`${now.email ? `Signed in as ${s.bold(now.email)}` : "Signed in"} on this Mac${now.since ? `, since ${day(now.since)}` : ""}.`));
   if (now.macs && now.macs > 1) d.out(`  ${s.bold(String(now.macs))} Macs are signed in to this account: ${ACCOUNT_SITE}/account lists them.`);
   // The plan: as the server said it now, or as last known when it couldn't be asked.
-  d.out(`  ${styledPlanLine(planLine(now.plan, now.trial, Date.now(), { ownKey: d.ownKey }), s)}`);
-  // Pro's weekly pace (information only), what's paused past its month's allowance, or your own key running the AI instead.
-  const detail = planDetail(now.plan, now.trial, { ownKey: d.ownKey });
-  if (detail) d.out(`  ${s.dim(`${detail}.`)}`);
+  d.out(`  ${styledPlanLine(planLine(now.plan, now.trial, Date.now(), { use }), s)}`);
+  // Pro's weekly pace (information only), what's paused past its month's allowance, or which of your own keys pays instead.
+  const detail = planDetail(now.plan, now.trial, { use });
+  if (detail) d.out(`  ${s.dim(`${detail.replace(/\.$/, "")}.`)}`);
+  keysLine();
   if (!now.reached) d.out(s.warn(`Couldn't reach ${DOMAIN} to check: ${now.why ?? "offline?"}. Still signed in.`));
   const pro = planStatus(now.plan, now.trial).kind === "pro";
   // Managing Pro whenever it's the plan; getting it only while it's on sale.
@@ -539,7 +551,7 @@ export async function pairedPhones(): Promise<string[]> {
 }
 
 export async function realDeps(): Promise<AccountDeps> {
-  const [{ keyStore }, { ownOpenRouterKey }, { terminalKeys }] = await Promise.all([import("./platform/keys.ts"), import("./keys-cli.ts"), import("./upgrade-cli.ts")]);
+  const [{ keyStore }, { aiUseHere }, { terminalKeys }] = await Promise.all([import("./platform/keys.ts"), import("./keys-cli.ts"), import("./upgrade-cli.ts")]);
   const stop = new AbortController();
   process.once("SIGINT", () => stop.abort());
   const phones = await pairedPhones().catch(() => [] as string[]);
@@ -558,6 +570,6 @@ export async function realDeps(): Promise<AccountDeps> {
     signal: stop.signal,
     sale: proOnSale(),
     keys: (on) => terminalKeys(on),
-    ownKey: await ownOpenRouterKey(keyStore).catch(() => false),
+    aiUse: await aiUseHere(keyStore).catch(() => undefined),
   };
 }

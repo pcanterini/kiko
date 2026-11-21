@@ -6,16 +6,25 @@
 // ends once cancelled, a payment that failed (and when Pro stops then), and that it's managed on the
 // Mac (`kiko account billing`, there whenever accounts are): nothing is bought on the phone. With
 // your own key set, Pro still says Pro (`ownKey` beside it: the phone says why its allowance isn't
-// used, as the Mac does: plan-words.ts OWN_KEY_OVER_PRO).
+// used, as the Mac does). And the Mac's own words for them (`planText`, `planNote`, `keysText`:
+// plan-words.ts aiWords, as Settings → Account and `kiko account` say them), so the phone can say
+// which of your keys does what, and which one pays, exactly as the Mac does.
 import type { AccountView } from "../core/account/account.ts";
+import type { AiUse } from "../core/account/key-words.ts";
 import { phoneReason, type PlanReason } from "../core/account/phone-plan.ts";
-import { planStatus } from "../core/account/plan-words.ts";
+import { aiWords, planStatus } from "../core/account/plan-words.ts";
 
 export type AccountStatus = {
   type: "account";
   signedIn: boolean;
-  /** Your own OpenRouter key runs Kiko's AI: no trial or plan is in use (yours always wins). */
+  /** Your own OpenRouter key is set: it runs every OpenRouter call, so a trial or plan isn't used for them (yours always wins). */
   ownKey: boolean;
+  /** The plan in the Mac's words, as Settings → Account's Plan row: "Free trial · 5 days left", "Kiko Pro (monthly) · renews 3 Dec", "No plan", "Signed out". */
+  planText?: string;
+  /** Under it, with a plan in effect and your own keys in use: which one pays now, and for Pro how to use it instead (on the Mac). */
+  planNote?: string;
+  /** Your own keys in use, as the Mac says it: "Your own keys: Anthropic for routing and summaries, OpenRouter for quick checks"; absent when the plan runs it all. */
+  keysText?: string;
   plan: "none" | "trial" | "pro";
   /** A trial's end (ms since 1970), running or ended. */
   endsAt?: number | null;
@@ -46,10 +55,12 @@ const pct = (share: number | undefined | null) => (typeof share === "number" && 
 
 /**
  * The status from the account as last known, and whether your own key is in use; null with no account
- * (accounts off). `o.phone`: whether the plan includes the iPhone app, while Pro is on sale (unset: not said).
+ * (accounts off). `o.use`: what Kiko's AI runs on now (config.ts aiUseNow), for the Mac's words
+ * (unset: none sent). `o.phone`: whether the plan includes the iPhone app, while Pro is on sale (unset: not said).
  */
-export function accountStatus(view: AccountView | null, ownKey: boolean, now = Date.now(), o: { phone?: boolean } = {}): AccountStatus | null {
-  const status = statusOf(view, ownKey, now);
+export function accountStatus(view: AccountView | null, ownKey: boolean, now = Date.now(), o: { phone?: boolean; use?: AiUse } = {}): AccountStatus | null {
+  const found = statusOf(view, ownKey, now);
+  const status = found && o.use ? { ...found, ...wordsOf(view, o.use, now) } : found;
   if (!status || o.phone === undefined) return status;
   return o.phone ? { ...status, phoneApp: "included" } : { ...status, phoneApp: "needs_pro", phoneAppReason: phoneReason(view, now) };
 }
@@ -71,6 +82,12 @@ function statusOf(view: AccountView | null, ownKey: boolean, now: number): Accou
   }
   if (st.kind === "ended") return { ...base, plan: "trial", endsAt: st.endsAt, usedPct: pct(st.usedShare), ended: true, endedWhy: st.why };
   return { ...base, plan: "none" };
+}
+
+/** The Mac's words (plan-words.ts aiWords, the phone's variant: its commands are the Mac's), only those there are. */
+function wordsOf(view: AccountView | null, use: AiUse, now: number): Pick<AccountStatus, "planText" | "planNote" | "keysText"> {
+  const w = aiWords(view, use, now, { phone: true });
+  return { ...(w.plan ? { planText: w.plan } : {}), ...(w.planNote.length ? { planNote: w.planNote.join(" ") } : {}), ...(w.keys ? { keysText: w.keys } : {}) };
 }
 
 /** How often the status is looked at again, to tell the phones when it changed (it's sent only then). */

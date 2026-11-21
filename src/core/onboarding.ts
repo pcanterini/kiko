@@ -230,7 +230,11 @@ export const HOW_TO_RUN = {
  * runs on a key of your own. `hasKey`: there's one already.
  */
 export const ACCOUNT_NO_PLAN = {
-  signedIn: (hasKey: boolean) => `No plan is running on this account, so ${NAME} runs on your own OpenRouter key. ${hasKey ? "It uses the one you have." : "Paste one, or Esc to skip."}`,
+  // With a key already (OpenRouter's or Anthropic's: keys.ts hasModel), not named: either runs it.
+  signedIn: (hasKey: boolean) =>
+    hasKey
+      ? `No plan is running on this account, so ${NAME} runs on your own key. It uses the one you have.`
+      : `No plan is running on this account, so ${NAME} runs on your own OpenRouter key. Paste one, or Esc to skip.`,
   /** Under the last step's "needs a key", signed in. */
   end: "(You're signed in, but no plan is running on the account: the free trial ended, or never started.)",
 };

@@ -15,6 +15,7 @@ import { accountsLive, accountUrl } from "../../../src/core/env.ts";
 import { checkWaits } from "../../support/until.ts";
 import { codeRefused, planJson, trialRefused, trialStarted } from "../../support/fake-account.ts";
 import { NEAR_END, planActive, planBadge, planBrief, planLine, planFacts, planStatus, reminderNotice, trialRefusedLine, trialStartedLine } from "../../../src/core/account/plan-words.ts";
+import { aiUse } from "../../../src/core/account/key-words.ts";
 import { type Answer, EMAIL, fakeAccountServer, fakeJwt, happyScript, memoryStore, PENDING, SESSION_TOKEN, sessionAnswer, SIGNED_OUT, USER_CODE } from "../../support/fake-account.ts";
 
 const servers: { close(): Promise<void> }[] = [];
@@ -815,7 +816,7 @@ describe("the plan's words", () => {
     assert.equal(planLine({ ...plan({ name: "pro", used: 0.4 }) }, null, now), "Plan: Kiko Pro · 40% of this month used.");
     // Past it, a stop until it renews (no cheaper model any more): said under the line (planDetail).
     assert.equal(planLine({ ...plan({ name: "pro", used: 1 }) }, null, now), "Plan: Kiko Pro · 100% of this month used.");
-    assert.match(planLine(null, null, now), /^Plan: none\. Kiko's AI runs on your own OpenRouter key/);
+    assert.match(planLine(null, null, now), /^Plan: none\. Kiko's AI can run on your own OpenRouter key/);
     assert.match(planLine(plan({ daysLeft: -1 }), null, now), /^Plan: none\. Your free trial ended/);
   });
 
@@ -842,12 +843,16 @@ describe("the plan's words", () => {
     assert.deepEqual(planFacts(null, ended, { now }), [{ label: "Plan", value: "Trial ended on 2 Nov", more: goOn }]);
     assert.deepEqual(planFacts(null, { ...ended, endedWhy: "cap" }, { now }), [{ label: "Plan", value: "Trial ended: its usage was used up", more: goOn }]);
     assert.deepEqual(planFacts(null, null, { now }), [{ label: "Plan", value: "No plan" }]);
-    assert.deepEqual(planFacts(null, null, { now, ownKey: true }), [{ label: "Plan", value: "Using your own OpenRouter key" }]);
-    assert.deepEqual(planFacts(plan(), null, { now, ownKey: true }), [{ label: "Plan", value: "Using your own OpenRouter key", more: ["The free trial isn't used while a key is set."] }]);
+    // Your own key: the plan as it is (the key is said in its own row: settings-options.ts accountFacts).
+    const own = aiUse({ llm: "anthropic/claude-haiku", classifier: true, keys: ["openrouter"], planRuns: true });
+    assert.deepEqual(planFacts(null, null, { now, use: own }), [{ label: "Plan", value: "No plan" }]);
+    assert.deepEqual(planFacts(plan(), null, { now, use: own }), [
+      { label: "Plan", value: "Free trial · 4 days left", more: ["Your own OpenRouter key is in use, so the free trial isn't being used."] },
+    ]);
     // Pro with your own key: still Pro, with why it isn't used under it (and no month's share).
-    assert.equal(planFacts(plan({ name: "pro" }), null, { now, ownKey: true }).length, 1);
+    assert.equal(planFacts(plan({ name: "pro" }), null, { now, use: own }).length, 1);
     // An ended trial with a key of your own: just ended (nothing to explain).
-    assert.deepEqual(planFacts(null, ended, { now, ownKey: true }), [{ label: "Plan", value: "Trial ended on 2 Nov" }]);
+    assert.deepEqual(planFacts(null, ended, { now, use: own }), [{ label: "Plan", value: "Trial ended on 2 Nov" }]);
     // While Kiko Pro is on sale, it's offered beside your own key.
     process.env.KIKO_ACCOUNTS = "1";
     process.env.KIKO_PRO = "1";

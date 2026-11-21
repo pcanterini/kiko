@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, test } from "node:test";
 import { PassThrough } from "node:stream";
+import { aiUse } from "../../../src/core/account/key-words.ts";
 import { accountCommand, LOGIN_WAIT_LINE, waitForEnter, type AccountDeps } from "../../../src/account-cli.ts";
 import { styleOf } from "../../../src/ui/cli-style.ts";
 import { Account, NOT_OPEN_LINE, SESSION_KEY, SIGNED_OUT_LINE } from "../../../src/core/account/account.ts";
@@ -128,7 +129,7 @@ describe("kiko login", () => {
   // The plan, asked once signed in: none on the fake server's account, and how to start the trial.
   // The terms signing in accepts, dim right under the code (core/terms.ts agreeLine).
   const AGREE = "By signing in, you agree to Kiko's Terms (kiko.sh/terms) and Privacy Policy (kiko.sh/privacy).";
-  const TRIAL = "  Plan: none. Kiko's AI runs on your own OpenRouter key (kiko-dev keys set openrouter), or the free trial: kiko-dev setup starts it.";
+  const TRIAL = "  Plan: none. Kiko's AI can run on your own OpenRouter key (kiko-dev keys set openrouter), or the free trial: kiko-dev setup starts it.";
 
   test("as gh: the code first, Enter opens the plain link (the code typed there), then authentication complete and who", async () => {
     const t = await setUp();
@@ -366,7 +367,7 @@ describe("kiko account", () => {
     const t = await setUp({ signedIn: true });
     assert.equal(await t.run("account"), 0);
     assert.match(t.out[0], /^✓ Signed in as name@example\.com on this Mac, since \d+ \w+ \d{4}\.$/);
-    assert.equal(t.out[1], "  Plan: none. Kiko's AI runs on your own OpenRouter key (kiko-dev keys set openrouter), or the free trial: kiko-dev setup starts it.");
+    assert.equal(t.out[1], "  Plan: none. Kiko's AI can run on your own OpenRouter key (kiko-dev keys set openrouter), or the free trial: kiko-dev setup starts it.");
     assert.equal(t.out.at(-1), "kiko-dev logout signs out; kiko-dev account delete deletes the account.");
   });
 
@@ -442,6 +443,29 @@ describe("kiko account", () => {
     const t = await setUp();
     assert.equal(await t.run("account"), 0);
     assert.match(t.out[0], /^Not signed in\. kiko-dev login signs in: an account is only for the free trial, and your own key needs none\.$/);
+  });
+
+  test("not signed in, with both keys and Haiku on Anthropic: which key does what, as Settings and the phone say it", async () => {
+    const t = await setUp();
+    t.deps.aiUse = (planRuns) => aiUse({ llm: "haiku", classifier: true, keys: ["anthropic", "openrouter"], planRuns });
+    assert.equal(await t.run("account"), 0);
+    assert.equal(t.out[1], "  Keys: Your own keys: Anthropic for routing and summaries, OpenRouter for quick checks.");
+  });
+
+  test("signed in, no plan, your OpenRouter key: plainly no plan, then the key (no advice to add one)", async () => {
+    const t = await setUp({ signedIn: true });
+    t.deps.aiUse = (planRuns) => aiUse({ llm: "anthropic/claude-haiku", classifier: true, keys: ["openrouter"], planRuns });
+    assert.equal(await t.run("account"), 0);
+    assert.equal(t.out[1], "  Plan: none.");
+    assert.equal(t.out[2], "  Keys: Your own OpenRouter key.");
+  });
+
+  test("signed in, no plan and no key: the advice as before, and that the AI is off", async () => {
+    const t = await setUp({ signedIn: true });
+    t.deps.aiUse = (planRuns) => aiUse({ llm: null, classifier: true, keys: [], planRuns });
+    assert.equal(await t.run("account"), 0);
+    assert.match(t.out[1], /^ {2}Plan: none\. Kiko's AI can run on your own OpenRouter key/);
+    assert.equal(t.out[2], "  Keys: None, so Kiko's AI is off.");
   });
 });
 

@@ -15,14 +15,12 @@ import { accountClient, planFrom, type Plan } from "../../../src/core/account/cl
 import {
   billingChange,
   billingWatcher,
-  OWN_KEY_OVER_PRO,
-  OWN_KEY_OVER_PRO_LINES,
-  ownKeyOverPro,
   planBadge,
   planBrief,
   planDetail,
   planFacts,
   planLine,
+  planNoteLines,
   planRunsAi,
   planStatus,
   refusalNotice,
@@ -31,6 +29,7 @@ import {
   UPGRADE_HINT,
   when,
 } from "../../../src/core/account/plan-words.ts";
+import { aiUse } from "../../../src/core/account/key-words.ts";
 import { proOnSale } from "../../../src/core/env.ts";
 import { COMMAND, PRO_ON_SALE } from "../../../src/core/name.ts";
 import { accountChoices } from "../../../src/core/settings-options.ts";
@@ -167,30 +166,30 @@ describe("every Pro state, in words", () => {
   test("renewing: Settings 'Plan  Kiko Pro · renews 3 Dec' and 'This month  31% used · this week 12%, on track'; kiko account and kiko keys", () => {
     const p = pro();
     assert.deepEqual(planFacts(p, null, { now }), [
-      { label: "Plan", value: "Kiko Pro · renews 3 Dec", warn: false },
+      { label: "Plan", value: "Kiko Pro (monthly) · renews 3 Dec", warn: false },
       { label: "This month", value: "31% used · this week 12%, on track", warn: false },
     ]);
     assert.equal(planFacts(pro({ terms: { pace: "fast", weekShare: 0.3 } }), null, { now })[1].value, "31% used · this week 30%, faster than usual");
     assert.equal(planDetail(p, null, { now }), "12% this week · on track");
     assert.equal(planDetail(pro({ terms: { pace: "fast", weekShare: 0.3 } }), null, { now }), "30% this week · using it faster than usual");
-    assert.equal(planLine(p, null, now), "Plan: Kiko Pro · renews 3 Dec · 31% of this month used.");
-    assert.equal(planBrief(p, null, now), "Kiko Pro, renews 3 Dec, 31% of this month used");
+    assert.equal(planLine(p, null, now), "Plan: Kiko Pro (monthly) · renews 3 Dec · 31% of this month used.");
+    assert.equal(planBrief(p, null, now), "Kiko Pro (monthly), renews 3 Dec, 31% of this month used");
   });
 
   test("cancelled: 'Kiko Pro · ends 3 Dec', still with the month's share", () => {
     const p = pro({ terms: { cancelAt: DEC_3, renewsAt: null } });
     assert.deepEqual(planFacts(p, null, { now }), [
-      { label: "Plan", value: "Kiko Pro · ends 3 Dec", warn: true },
+      { label: "Plan", value: "Kiko Pro (monthly) · ends 3 Dec", warn: true },
       { label: "This month", value: "31% used · this week 12%, on track", warn: false },
     ]);
-    assert.equal(planLine(p, null, now), "Plan: Kiko Pro · ends 3 Dec · 31% of this month used.");
-    assert.equal(planBrief(p, null, now), "Kiko Pro, ends 3 Dec, 31% of this month used");
+    assert.equal(planLine(p, null, now), "Plan: Kiko Pro (monthly) · ends 3 Dec · 31% of this month used.");
+    assert.equal(planBrief(p, null, now), "Kiko Pro (monthly), ends 3 Dec, 31% of this month used");
   });
 
   test("a payment failed: Settings 'Kiko Pro · payment failed' in yellow, to update the card before Pro stops, the month's share and pace; kiko account and kiko keys", () => {
     const p = pro({ terms: { paymentFailed: { graceEndsAt: NOV_27 } } });
     assert.deepEqual(planFacts(p, null, { now }), [
-      { label: "Plan", value: "Kiko Pro · payment failed", warn: true, more: ["Update your card in Manage billing before Pro stops on 27 Nov."] },
+      { label: "Plan", value: "Kiko Pro (monthly) · payment failed", warn: true, more: ["Update your card in Manage billing before Pro stops on 27 Nov."] },
       { label: "This month", value: "31% used · this week 12%, on track", warn: false },
     ]);
     assert.equal(planDetail(p, null, { now }), "31% of this month used · 12% this week · on track");
@@ -236,31 +235,34 @@ describe("every Pro state, in words", () => {
   });
 
   test("your own key with Pro paid for: Pro still shown (no month's share), and why its allowance isn't used, in Settings, kiko account and kiko keys", () => {
-    assert.deepEqual(planFacts(pro(), null, { now, ownKey: true }), [{ label: "Plan", value: "Kiko Pro · renews 3 Dec", warn: false, more: [...OWN_KEY_OVER_PRO_LINES] }]);
-    assert.deepEqual(OWN_KEY_OVER_PRO_LINES, ["Your own OpenRouter key is in use, so Pro isn't being used.", `To use Pro: ${COMMAND} keys remove openrouter`]);
-    assert.equal(planDetail(pro(), null, { now, ownKey: true }), OWN_KEY_OVER_PRO);
-    assert.equal(OWN_KEY_OVER_PRO, `Your own OpenRouter key is in use, so Pro isn't being used. To use Pro: ${COMMAND} keys remove openrouter`);
-    assert.equal(planLine(pro(), null, now, { ownKey: true }), "Plan: Kiko Pro · renews 3 Dec.");
-    assert.equal(planBrief(pro(), null, now, { ownKey: true }), "Kiko Pro, renews 3 Dec");
-    assert.deepEqual(planFacts(pro({ terms: { cancelAt: DEC_3, renewsAt: null } }), null, { now, ownKey: true })[0], {
+    const own = aiUse({ llm: "anthropic/claude-haiku", classifier: true, keys: ["openrouter"], planRuns: true });
+    const lines = ["Your own OpenRouter key is in use, so Pro isn't being used.", `To use Pro: ${COMMAND} keys remove openrouter`];
+    assert.deepEqual(planFacts(pro(), null, { now, use: own }), [{ label: "Plan", value: "Kiko Pro (monthly) · renews 3 Dec", warn: false, more: lines }]);
+    assert.deepEqual(planNoteLines(pro(), null, own, now), lines);
+    assert.equal(planDetail(pro(), null, { now, use: own }), lines.join(" "));
+    assert.equal(planLine(pro(), null, now, { use: own }), "Plan: Kiko Pro (monthly) · renews 3 Dec.");
+    assert.equal(planBrief(pro(), null, now, { use: own }), "Kiko Pro (monthly), renews 3 Dec");
+    assert.deepEqual(planFacts(pro({ terms: { cancelAt: DEC_3, renewsAt: null } }), null, { now, use: own })[0], {
       label: "Plan",
-      value: "Kiko Pro · ends 3 Dec",
+      value: "Kiko Pro (monthly) · ends 3 Dec",
       warn: true,
-      more: [...OWN_KEY_OVER_PRO_LINES],
+      more: lines,
     });
     // Past the month's allowance, your key going on: still Pro, with the same line under it (not "paused").
-    assert.equal(planDetail(pro({ used: 1 }), null, { now, ownKey: true }), OWN_KEY_OVER_PRO);
-    assert.equal(ownKeyOverPro(pro(), null, true, now), true);
-    assert.equal(ownKeyOverPro(pro(), null, false, now), false);
-    // The trial's own-key words as they were.
+    const ownPaused = aiUse({ llm: "anthropic/claude-haiku", classifier: true, keys: ["openrouter"], planRuns: false });
+    assert.equal(planDetail(pro({ used: 1 }), null, { now, use: ownPaused }), lines.join(" "));
+    // No key of yours: nothing under it.
+    assert.deepEqual(planNoteLines(pro(), null, aiUse({ llm: "anthropic/claude-haiku", classifier: true, keys: [], planRuns: true }), now), []);
+    // The trial: its plan shown, and only that it isn't used (no "to use the trial").
     const trial: Plan = {
       name: "trial",
       startedAt: now - 86_400_000,
       endsAt: now + 5 * 86_400_000,
       quota: { period: "plan", periodEnd: null, usedShare: 0.1, dailyCap: true, dailyResetsAt: null, pastCap: "stop" },
     };
-    assert.deepEqual(planFacts(trial, null, { now, ownKey: true }), [{ label: "Plan", value: "Using your own OpenRouter key", more: ["The free trial isn't used while a key is set."] }]);
-    assert.equal(ownKeyOverPro(trial, null, true, now), false);
+    assert.deepEqual(planFacts(trial, null, { now, use: own }), [
+      { label: "Plan", value: "Free trial · 5 days left", more: ["Your own OpenRouter key is in use, so the free trial isn't being used."] },
+    ]);
   });
 
   test("a change made on the billing page: cancelled, resumed, switched yearly or monthly, ended; the card alone is none", () => {

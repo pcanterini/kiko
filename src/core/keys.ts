@@ -12,6 +12,7 @@ import { COMMAND, ENV_PREFIX, NAME } from "./name.ts";
 import { appEnv } from "./env.ts";
 import { OPENROUTER_HAIKU, OPENROUTER_MODELS } from "./openrouter-llm.ts";
 import { heldKeys, keyOf } from "./key-values.ts";
+import { type AiUse, aiUse, keyUse } from "./account/key-words.ts";
 
 export type KeyId = "openrouter" | "anthropic" | "deepgram" | "cartesia";
 
@@ -178,6 +179,19 @@ export function pickEngines(chosen: Partial<Chosen>, env: NodeJS.ProcessEnv, poc
   return { tts, stt, llm, fallbacks };
 }
 
+/**
+ * What Kiko's AI runs on now (account/key-words.ts aiUse), decided as the app decides it at start:
+ * the engines pickEngines picks from what's chosen and the keys in `env` (keysInUse), the plan
+ * counting for OpenRouter only without an OpenRouter key of yours (config.ts viaAccount), and the
+ * quick checks on unless Settings turned them off. For `kiko keys` and `kiko account`; the running
+ * app asks config.ts aiUseNow (the engines it runs now).
+ */
+export function aiUseFor(chosen: Partial<Chosen>, env: NodeJS.ProcessEnv, o: { planRuns: boolean; classifier: boolean }): AiUse {
+  const viaPlan = !isSet(env.OPENROUTER_API_KEY) && o.planRuns;
+  const e = pickEngines(chosen, env, true, viaPlan);
+  return aiUse({ llm: e.llm, classifier: o.classifier, keys: KEYS.filter((k) => isSet(env[k.env])).map((k) => k.id), planRuns: o.planRuns, stt: e.stt, tts: e.tts });
+}
+
 /** What a stand-in is, in a few words, for the line said at start. */
 function standIn(f: Fallback): string {
   if (f.setting === "tts") return `${f.using === "pocket" ? "the Pocket voice" : "the macOS voice"} is speaking`;
@@ -309,6 +323,8 @@ type KeySettingsDeps = {
   restart: () => void;
   /** A key saved and taken up now (not one another wins over, and no restart needed): the app says what it brings back (app/key-offer.ts). */
   saved?: (info: KeyInfo) => void;
+  /** What Kiko's AI runs on now (config.ts aiUseNow): each key's row says what it's used for. Absent: not said. */
+  aiUse?: () => AiUse;
 };
 
 /**
@@ -341,7 +357,16 @@ export class KeySettings {
 
   rows(chosen: Chosen): SettingRow[] {
     const env = typeof this.d.env === "function" ? this.d.env() : this.d.env;
-    return keyRowsFor({ chosen, env, sources: this.d.sources, keychain: this.keychain, unchecked: this.unchecked?.id ?? null, refused: this.refused, store: Boolean(this.d.store) });
+    return keyRowsFor({
+      chosen,
+      env,
+      sources: this.d.sources,
+      keychain: this.keychain,
+      unchecked: this.unchecked?.id ?? null,
+      refused: this.refused,
+      store: Boolean(this.d.store),
+      use: this.d.aiUse?.(),
+    });
   }
 
   /** Settings closed: a key that couldn't be checked and wasn't saved is let go. */
@@ -434,6 +459,8 @@ export type KeyRow = { set: boolean; source: KeySource | null; inKeychain: boole
  * characters, and a note when it matters (needed and missing, another one winning, one you entered
  * that couldn't be checked or was turned down). `keychain`: the names the Keychain holds; `unchecked`:
  * the id of a key entered and waiting for "save it anyway"; `refused`: the id of one its provider turned down.
+ * `use`: what Kiko's AI runs on now (account/key-words.ts): a key that's set says, dim, what it's
+ * used for now, or why it isn't ("Used for quick checks", "Not used now: speech-to-text is Apple's").
  */
 export function keyRowsFor(o: {
   chosen: Chosen;
@@ -443,6 +470,7 @@ export function keyRowsFor(o: {
   unchecked: string | null;
   refused?: string | null;
   store: boolean;
+  use?: AiUse;
 }): SettingRow[] {
   const set = new Set([...KEY_NAMES.filter((name) => o.env[name]), ...o.keychain]);
   return keysShown(o.chosen, set).map((k) => {
@@ -456,6 +484,8 @@ export function keyRowsFor(o: {
     else if (o.refused === k.id) row.note = `${k.name} turned down the key you entered: nothing saved. Enter another?`;
     else if (key && source !== "Keychain" && raw.inKeychain) row.note = `The ${source} key wins over the Keychain's`;
     else if (!key && needed) row.note = `Needed: ${needed}`;
+    const doing = key && o.use ? keyUse(o.use, k.id) : null;
+    if (doing) row.detail = doing;
     return row;
   });
 }

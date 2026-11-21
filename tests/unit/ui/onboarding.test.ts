@@ -1568,7 +1568,7 @@ describe("how to run it (accounts open)", () => {
     const after = await s.until(/Open Kiko now/);
     assert.match(after, /Sign in/);
     assert.match(after, /Signed in as name@example\.com/);
-    assert.match(after, /No plan is running on this account, so Kiko runs on your own OpenRouter key\. It uses the one you have\./);
+    assert.match(after, /No plan is running on this account, so Kiko runs on your own key\. It uses the one you have\./);
     assert.doesNotMatch(after, /Paste your OpenRouter key|arrives with the next/);
     assert.equal(a.server.to("trial").length, 0, "no trial started");
     assert.ok(calls.logged.includes('setup_account {"choice":"account","ended":"signed-in"}'));
@@ -1918,7 +1918,7 @@ describe("how to run it (accounts open)", () => {
       await s.press(ENTER);
       const end = await s.until(/Open Kiko now/);
       assert.match(end, /Signed in as name@example\.com/);
-      assert.match(end, /Plan: Kiko Pro · renews 3 Dec · 31% of this month used\./);
+      assert.match(end, /Plan: Kiko Pro \(monthly\) · renews 3 Dec · 31% of this month used\./);
       assert.doesNotMatch(s.all(), /Paste your OpenRouter key|already used its free trial|can't answer yet/);
       assert.equal(a.server.to("trial").length, 0, "no trial asked for");
       assert.deepEqual(calls.saved, []);
@@ -1935,7 +1935,7 @@ describe("how to run it (accounts open)", () => {
       await s.press(DOWN, 2);
       await s.press(ENTER);
       const end = await s.until(/Open Kiko now/);
-      assert.match(end, /Plan: Kiko Pro · renews 3 Dec/);
+      assert.match(end, /Plan: Kiko Pro \(monthly\) · renews 3 Dec/);
       assert.doesNotMatch(s.all(), /Paste your OpenRouter key|No plan is running/);
       assert.equal(a.server.to("trial").length, 0);
       assert.deepEqual(calls.saved, []);
@@ -1950,7 +1950,7 @@ describe("how to run it (accounts open)", () => {
       await s.press(DOWN);
       await s.press(ENTER);
       const end = await s.until(/Open Kiko now/);
-      assert.match(end, /Plan: Kiko Pro · renews 3 Dec/);
+      assert.match(end, /Plan: Kiko Pro \(monthly\) · renews 3 Dec/);
       assert.doesNotMatch(s.all(), /Which Kiko Pro plan\?|Paste your OpenRouter key/);
       assert.equal(a.server.to("checkout").length, 0);
     });
@@ -2014,7 +2014,7 @@ describe("how to run it (accounts open)", () => {
       await s.press(ENTER);
       const end = await s.until(/Open Kiko now/);
       assert.match(end, /This month's Kiko Pro allowance is used/);
-      assert.match(end, /Until then, Kiko uses your own OpenRouter key\./);
+      assert.match(end, /Until then, Kiko uses your own key\./);
       assert.doesNotMatch(s.all(), /Paste your OpenRouter key/);
       assert.deepEqual(calls.saved, []);
     });

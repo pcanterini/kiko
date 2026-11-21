@@ -14,6 +14,7 @@ import { afterEach, describe, test } from "node:test";
 import { accountCommand } from "../../../src/account-cli.ts";
 import { Account } from "../../../src/core/account/account.ts";
 import { accountClient } from "../../../src/core/account/client.ts";
+import { aiUse } from "../../../src/core/account/key-words.ts";
 import { COMMAND } from "../../../src/core/name.ts";
 import { upgradeCommand, type UpgradeDeps } from "../../../src/upgrade-cli.ts";
 import { billingPage, billingRefused, EMAIL, fakeAccountServer, happyScript, memoryStore, planJson, proJson, sessionAnswer, USER_CODE } from "../../support/fake-account.ts";
@@ -335,7 +336,7 @@ describe("kiko account billing", () => {
     for (const sale of [true, false]) {
       const t = await setUp({ sale, signedIn: true, sessions: [sessionAnswer({ plan: proJson() })] });
       assert.equal(await accountCommand("account", [], t.deps), 0);
-      assert.match(t.text(), /^ {2}Plan: Kiko Pro · renews 3 Dec · 31% of this month used\.$/m);
+      assert.match(t.text(), /^ {2}Plan: Kiko Pro \(monthly\) · renews 3 Dec · 31% of this month used\.$/m);
       assert.match(t.text(), /^ {2}12% this week · on track\.$/m);
       assert.match(t.out.at(-1)!, new RegExp(`${COMMAND} account billing manages Kiko Pro\\.$`));
     }
@@ -353,10 +354,23 @@ describe("kiko account billing", () => {
 
   test("kiko account with your own key and Pro paid for: Pro still shown, and why its allowance isn't used", async () => {
     const t = await setUp({ signedIn: true, sessions: [sessionAnswer({ plan: proJson() })] });
-    t.deps.ownKey = true;
+    t.deps.aiUse = (planRuns) => aiUse({ llm: "anthropic/claude-haiku", classifier: true, keys: ["openrouter"], planRuns });
     assert.equal(await accountCommand("account", [], t.deps), 0);
-    assert.match(t.text(), /^ {2}Plan: Kiko Pro · renews 3 Dec\.$/m);
+    assert.match(t.text(), /^ {2}Plan: Kiko Pro \(monthly\) · renews 3 Dec\.$/m);
     assert.match(t.text(), new RegExp(`^ {2}Your own OpenRouter key is in use, so Pro isn't being used\\. To use Pro: ${COMMAND} keys remove openrouter\\.$`, "m"));
+    assert.match(t.text(), /^ {2}Keys: Your own OpenRouter key\.$/m);
+  });
+
+  test("kiko account with your Anthropic key routing and Pro paid for: Pro's month shown, and that Pro runs the quick checks", async () => {
+    const t = await setUp({ signedIn: true, sessions: [sessionAnswer({ plan: proJson() })] });
+    t.deps.aiUse = (planRuns) => aiUse({ llm: "haiku", classifier: true, keys: ["anthropic"], planRuns });
+    assert.equal(await accountCommand("account", [], t.deps), 0);
+    assert.match(t.text(), /^ {2}Plan: Kiko Pro \(monthly\) · renews 3 Dec · 31% of this month used\.$/m);
+    assert.match(
+      t.text(),
+      new RegExp(`^ {2}12% this week · on track\\. Pro runs the quick checks; your own Anthropic key runs routing and summaries\\. To use Pro for both: ${COMMAND} keys remove anthropic\\.$`, "m"),
+    );
+    assert.match(t.text(), /^ {2}Keys: Your own Anthropic key for routing and summaries; Kiko Pro for quick checks\.$/m);
   });
 });
 

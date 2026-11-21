@@ -15,12 +15,13 @@ import { parseEnv } from "node:util";
 import { ENV_FILE, INSTALLED } from "./core/app-root.ts";
 import { SETTING_ENV } from "./core/env.ts";
 import { columns } from "./core/text.ts";
-import { enterKey, KEY_NAMES, keyNamed, KEYS, masked, neededFor, pickEngines, type Chosen, type KeyFetch, type KeyInfo } from "./core/keys.ts";
+import { aiUseFor, enterKey, KEY_NAMES, keyNamed, KEYS, masked, neededFor, pickEngines, type Chosen, type KeyFetch, type KeyId, type KeyInfo } from "./core/keys.ts";
 import { OPENROUTER_HAIKU } from "./core/openrouter-llm.ts";
 import { COMMAND, ENV_PREFIX, NAME } from "./core/name.ts";
 import { loadSettings } from "./core/settings.ts";
 import type { AccountView } from "./core/account/account.ts";
-import { OWN_KEY_OVER_PRO, ownKeyOverPro, planBrief, planRunsAi } from "./core/account/plan-words.ts";
+import { planBrief, planNoteLines, planRunsAi } from "./core/account/plan-words.ts";
+import { type AiUse, keysDetail, keysInUseFor, keyUse, planUsed } from "./core/account/key-words.ts";
 import type { KeyStore } from "./platform/types.ts";
 import { PLAIN, styleFor, type Style } from "./ui/cli-style.ts";
 
@@ -32,6 +33,8 @@ export type KeysDeps = {
   store: KeyStore | null;
   /** What's chosen; the rest is decided by the keys there are, as config.ts does. */
   chosen: Partial<Chosen>;
+  /** The quick checks (the classifier) are on in Settings; absent: on, the default. */
+  classifier?: boolean;
   /** A line of output. */
   out: (line: string) => void;
   /** The key, asked for without showing it; null when there's no terminal to ask in. */
@@ -89,6 +92,8 @@ async function list(d: KeysDeps): Promise<number> {
   const now = d.now?.() ?? Date.now();
   // A plan running on the account runs OpenRouter's models with no key (core/model-route.ts): not "needed" then.
   const planRuns = Boolean(signedIn && planRunsAi(signedIn.plan, now));
+  // What each key does now, and what runs on what (core/account/key-words.ts), as the app decides it.
+  const use = aiUseFor(d.chosen, set, { planRuns, classifier: d.classifier !== false });
   for (const k of KEYS) {
     const source = sourceOf(k.env, d, inKeychain);
     const key = source === "environment" ? d.env[k.env] : source === ".env" ? d.dotenv[k.env] : source === "Keychain" ? kept[k.env] : undefined;
@@ -97,20 +102,28 @@ async function list(d: KeysDeps): Promise<number> {
     // Padded first, then styled: the escape codes take no columns.
     const where = source ? shown.padEnd(22) : s.dim(shown.padEnd(22));
     d.out(`${s.bold(k.id.padEnd(11))} ${where} ${k.what}${!source && needed ? ` ${s.yellow(`(needed: ${needed})`)}` : ""}`);
+    const doing = keyUse(use, k.id as KeyId);
+    if (doing) d.out(s.dim(`${"".padEnd(11)} ${doing}`));
     if (source && source !== "Keychain" && inKeychain.has(k.env)) d.out(s.dim(`${"".padEnd(11)} also in the Keychain; the ${source} one wins`));
   }
   if (signedIn) {
-    const orKey = Boolean(sourceOf("OPENROUTER_API_KEY", d, inKeychain));
-    // Pro paid for, with your own key: Pro still shown, and why its allowance isn't used (the trial's words as they were).
-    const overPro = ownKeyOverPro(signedIn.plan, signedIn.trial, orKey, now);
-    const runs = planRuns && !overPro ? s.dim(orKey ? " (your OpenRouter key wins while it's set)" : " (runs the AI: no OpenRouter key needed)") : "";
-    d.out(`${s.bold(`${NAME} account:`)} ${signedIn.email ?? "signed in"} · ${planBrief(signedIn.plan, signedIn.trial, now, { ownKey: orKey })}${runs}`);
-    if (overPro) d.out(s.dim(`${"".padEnd(11)} ${OWN_KEY_OVER_PRO}`));
+    // The plan runs all of the AI there is: said beside it. Your own keys in use too: which one pays, under it.
+    const runs = planUsed(use) && !keysInUseFor(use).length ? s.dim(" (runs the AI: no OpenRouter key needed)") : "";
+    d.out(`${s.bold(`${NAME} account:`)} ${signedIn.email ?? "signed in"} · ${planBrief(signedIn.plan, signedIn.trial, now, { use })}${runs}`);
+    const note = planNoteLines(signedIn.plan, signedIn.trial, use, now).join(" ");
+    if (note) d.out(s.dim(`${"".padEnd(11)} ${note}`));
   } else if (d.account?.state === "signed-out" && d.account.revoked) d.out(s.dim(`${NAME} account: signed out on its server (${COMMAND} login signs in again)`));
+  d.out(s.dim(`What runs on what: ${keysDetail(use, planWho(signedIn, now)).join("; ")}.`));
   if (!d.store) d.out(s.warn(`No Keychain here (${ENV_PREFIX}KEYCHAIN is off, or this isn't a Mac): keys come from the environment and .env.`));
   else if (keychainError) d.out(s.warn(`The Keychain couldn't be read: ${keychainError}`));
   d.out(s.dim(`${COMMAND} keys set <name> enters one; ${COMMAND} keys remove <name> takes one out of the Keychain.`));
   return 0;
+}
+
+/** The plan's name in a sentence, for what it runs: "Kiko Pro", "the free trial", or "the plan". */
+function planWho(account: AccountView | null, now: number): string {
+  if (account?.state !== "signed-in" || !planRunsAi(account.plan, now)) return "the plan";
+  return account.plan?.name === "pro" ? `${NAME} Pro` : "the free trial";
 }
 
 async function set(info: KeyInfo, d: KeysDeps): Promise<number> {
@@ -231,15 +244,6 @@ async function confirm(question: string): Promise<boolean> {
   return /^y(es)?$/i.test(answer.trim());
 }
 
-/**
- * Your own OpenRouter key is set where the app takes it from (the environment, the repo's .env, the
- * Keychain): it runs the AI then, not the plan. Only whether it's there: the Keychain listed, never read.
- */
-export async function ownOpenRouterKey(store: KeyStore | null, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
-  if (env.OPENROUTER_API_KEY || readDotenv().OPENROUTER_API_KEY) return true;
-  return Boolean(store && (await store.list()).includes("OPENROUTER_API_KEY"));
-}
-
 /** This Mac's account as last known (account.json), while accounts are open: nothing asked of the server. */
 async function accountView(store: KeyStore | null): Promise<AccountView | null> {
   const { accountsLive, accountUrl } = await import("./core/env.ts");
@@ -248,21 +252,40 @@ async function accountView(store: KeyStore | null): Promise<AccountView | null> 
   return new Account({ store, client: accountClient(accountUrl()) }).view();
 }
 
-export async function realDeps(): Promise<KeysDeps> {
-  const { keyStore } = await import("./platform/keys.ts");
-  const saved = loadSettings();
-  const dotenv = readDotenv();
-  // KIKO_STT (or, in a checkout, STT: core/env.ts), from the environment or else .env.
+/** What's chosen, as config.ts decides it: KIKO_STT (or, in a checkout, STT: core/env.ts) from the environment or else .env, then the settings. */
+function chosenHere(dotenv: Record<string, string>, saved = loadSettings()): Partial<Chosen> {
   const pick = (setting: (typeof ENGINES)[number]) =>
     engineNames(setting)
       .map((name) => process.env[name] ?? dotenv[name])
       .find((value) => value !== undefined);
+  return { stt: pick("stt") ?? saved.stt, tts: pick("tts") ?? saved.tts, llm: pick("llm") ?? saved.llm };
+}
+
+/**
+ * What Kiko's AI runs on here (core/account/key-words.ts), for `kiko account`, given whether the
+ * plan runs it: the keys set where the app takes them from (the environment, the repo's .env, the
+ * Keychain: only listed, never read), what's chosen, and the quick checks' setting.
+ */
+export async function aiUseHere(store: KeyStore | null): Promise<(planRuns: boolean) => AiUse> {
+  const saved = loadSettings();
+  const dotenv = readDotenv();
+  const inKeychain = new Set(store ? await store.list().catch(() => [] as string[]) : []);
+  const set = Object.fromEntries(KEY_NAMES.filter((name) => process.env[name] || dotenv[name] || inKeychain.has(name)).map((name) => [name, "set"]));
+  const chosen = chosenHere(dotenv, saved);
+  return (planRuns) => aiUseFor(chosen, set, { planRuns, classifier: saved.classifier !== false });
+}
+
+export async function realDeps(): Promise<KeysDeps> {
+  const { keyStore } = await import("./platform/keys.ts");
+  const saved = loadSettings();
+  const dotenv = readDotenv();
   return {
     env: process.env,
     dotenv: Object.fromEntries(KEY_NAMES.flatMap((name) => (dotenv[name] ? [[name, dotenv[name]]] : []))),
     store: keyStore,
     // As config.ts decides them: the environment (and .env), then the settings; the defaults in list().
-    chosen: { stt: pick("stt") ?? saved.stt, tts: pick("tts") ?? saved.tts, llm: pick("llm") ?? saved.llm },
+    chosen: chosenHere(dotenv, saved),
+    classifier: saved.classifier !== false,
     out: (line) => console.log(line),
     askKey,
     confirm,

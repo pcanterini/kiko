@@ -125,12 +125,25 @@ async function pane80(): Promise<string[]> {
   return lines;
 }
 
+/**
+ * The keys in use, under the account (the tests' environment has a made-up Anthropic key and no
+ * OpenRouter one: tests/setup.ts), as config.ts aiUseNow and plan-words.ts aiWords say it.
+ */
+const KEYS_ROW = { label: "Keys", value: "Your own Anthropic key (quick checks off: they need OpenRouter)" };
+
 describe("Settings → Account → Sign in", () => {
   test("signed out: plainly, Sign in below it, your own keys dim; no `kiko login` line", async () => {
     assert.equal(row().value, "Not signed in");
-    assert.deepEqual(row().facts, [{ value: "Not signed in.", more: ["Your own keys never need an account."] }]);
+    assert.deepEqual(row().facts, [{ value: "Not signed in.", more: ["Your own keys never need an account."] }, KEYS_ROW]);
     assert.deepEqual(values(), ["signin", "keep"]);
-    assert.deepEqual(await pane80(), ["  Not signed in.", "  Your own keys never need an account.", "", "▸   Sign in   in your browser, with a code", "    Leave it"]);
+    assert.deepEqual(await pane80(), [
+      "  Not signed in.",
+      "  Your own keys never need an account.",
+      "  Keys  Your own Anthropic key (quick checks off: they need OpenRouter)",
+      "",
+      "▸   Sign in   in your browser, with a code",
+      "    Leave it",
+    ]);
   });
 
   test("the code first; Enter opens the page it's typed at; the approval waited for; then signed in, the section refreshed", async () => {
@@ -184,7 +197,7 @@ describe("Settings → Account → Sign in", () => {
     accountAction("stop");
     await until(() => raw().signing === undefined, "stopped");
     assert.deepEqual(opened, []);
-    assert.deepEqual(row().facts, [{ value: "Not signed in.", more: ["Your own keys never need an account."] }]);
+    assert.deepEqual(row().facts, [{ value: "Not signed in.", more: ["Your own keys never need an account."] }, KEYS_ROW]);
     assert.deepEqual(values(), ["signin", "keep"]);
 
     accountAction("signin");
@@ -285,6 +298,7 @@ describe("Settings → Account → Sign in", () => {
     assert.deepEqual(row().facts, [
       { value: "The sign-in was denied in the browser. Nothing changed.", warn: true },
       { value: "Not signed in.", more: ["Your own keys never need an account."] },
+      KEYS_ROW,
     ]);
     assert.deepEqual(values(), ["signin", "keep"]);
   });
@@ -297,7 +311,7 @@ describe("Settings → Account → Sign in", () => {
     // As the account keeps it once the server said so.
     writeFileSync(file, JSON.stringify({ signedOut: { at: Date.now(), why: "revoked" } }));
     assert.equal(row().value, "Signed out on kiko.sh");
-    assert.deepEqual(row().facts, [{ value: "Signed out on kiko.sh.", warn: true, more: ["Your own keys never need an account."] }]);
+    assert.deepEqual(row().facts, [{ value: "Signed out on kiko.sh.", warn: true, more: ["Your own keys never need an account."] }, KEYS_ROW]);
     assert.deepEqual(values(), ["signin", "keep"]);
   });
 

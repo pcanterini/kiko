@@ -14,7 +14,8 @@ import type { SettingFact, SettingRow } from "./ui-store.ts";
 import { OPENROUTER_MODELS } from "./openrouter-llm.ts";
 import { COMMAND, DOMAIN, ENV_PREFIX, NAME, PHONE_PORT, PRO_PRICE, SPOKEN_DEFAULT, spokenName } from "./name.ts";
 import type { AccountRow, AccountView, SignInShown } from "./account/account.ts";
-import { planFacts } from "./account/plan-words.ts";
+import { aiWords, planFacts } from "./account/plan-words.ts";
+import type { AiUse } from "./account/key-words.ts";
 import { PHONE_WORDS } from "./account/phone-plan.ts";
 import { agreeLine } from "./terms.ts";
 import { proOnSale } from "./env.ts";
@@ -675,12 +676,13 @@ export const signOutWords = () =>
 
 /**
  * Settings → Account's pane (no about text: these say it), as aligned label and value rows: who's
- * signed in, then the plan (plan-words.ts planFacts). Signed out: plainly, with Sign in below it,
- * and that your own keys need no account. Signing in there (`signIn`, app/settings/account.ts): the
+ * signed in, then the plan (plan-words.ts planFacts), then your own keys in use (plan-words.ts
+ * aiWords: the words `kiko account` and the phone use too). Signed out: plainly, with Sign in below
+ * it, that your own keys need no account, and the keys in use. Signing in there (`signIn`, app/settings/account.ts): the
  * code and the page it's typed at, then the wait, then "✓ Signed in as …" over the signed-in rows,
  * or why not. Asking "sign out anyway?" (a phone paired): what signing out does, briefly.
  */
-export function accountFacts(view: AccountView, o: { ownKey: boolean; confirming: boolean; now?: number; signIn?: SignInShown | null; copied?: boolean }): SettingFact[] {
+export function accountFacts(view: AccountView, o: { use: AiUse | null; confirming: boolean; now?: number; signIn?: SignInShown | null; copied?: boolean }): SettingFact[] {
   const noAccount = "Your own keys never need an account.";
   const s = o.signIn ?? null;
   if (s?.phase === "starting") return [{ value: `Asking ${DOMAIN} for a code…` }];
@@ -701,16 +703,19 @@ export function accountFacts(view: AccountView, o: { ownKey: boolean; confirming
         : { value: `Couldn't open a browser: open ${s.url} and type the code.`, warn: true };
     return [{ label: "Your code", value: s.code }, ...copied, where, ...(s.link || !s.opened ? [{ value: "Waiting for you to approve… Esc to stop" }] : [])];
   }
+  // Your own keys in use (or none, and so no AI), the same words as `kiko account` and the phone.
+  const keysSaid = o.use ? aiWords(view, o.use, o.now).keys : null;
+  const keys: SettingFact[] = keysSaid ? [{ label: "Keys", value: keysSaid }] : [];
   if (view.state === "signed-out") {
     const failed: SettingFact[] = s?.phase === "failed" ? [{ value: s.said, warn: true }] : [];
-    return [...failed, view.revoked ? { value: `Signed out on ${DOMAIN}.`, warn: true, more: [noAccount] } : { value: "Not signed in.", more: [noAccount] }];
+    return [...failed, view.revoked ? { value: `Signed out on ${DOMAIN}.`, warn: true, more: [noAccount] } : { value: "Not signed in.", more: [noAccount] }, ...keys];
   }
   const done: SettingFact[] = s?.phase === "done" ? [{ value: `✓ Signed in as ${s.email ?? "you"}`, ok: true }] : [];
   const who: SettingFact = { label: "Signed in", value: view.email ?? "on this Mac" };
   if (o.confirming) return [who, { value: "Sign out on this Mac?", warn: true, more: [signOutWords()] }];
-  // Nothing on record yet (no plan, no trial): no Plan row, unless your own key runs the AI.
-  if (!view.plan && !view.trial && !o.ownKey) return [...done, who];
-  return [...done, who, ...planFacts(view.plan, view.trial, { ownKey: o.ownKey, now: o.now })];
+  // Nothing on record yet (no plan, no trial): no Plan row.
+  if (!view.plan && !view.trial) return [...done, who, ...keys];
+  return [...done, who, ...planFacts(view.plan, view.trial, { use: o.use, now: o.now }), ...keys];
 }
 
 /**

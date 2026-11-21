@@ -15,6 +15,7 @@ import { proOnSale } from "../env.ts";
 import { COMMAND, NAME } from "../name.ts";
 import type { SettingFact } from "../ui-store.ts";
 import type { Plan, Trial } from "./client.ts";
+import { type AiUse, keysInUseFor, keysLine, keysOverPlanLines, NO_AI_KEYS, ownKeysOnly } from "./key-words.ts";
 
 const DAY = 86_400_000;
 
@@ -145,24 +146,28 @@ export function planStatus(plan: Plan | null | undefined, trial: Trial | null | 
  * `kiko account`'s plan line: "Plan: free trial · 4 days left · 31% of its usage used."; Pro's month;
  * a trial that ended; none.
  */
-export function planLine(plan: Plan | null, trial: Trial | null, now = Date.now(), o: { ownKey?: boolean } = {}): string {
+export function planLine(plan: Plan | null, trial: Trial | null, now = Date.now(), o: { use?: AiUse | null } = {}): string {
   const st = planStatus(plan, trial, now);
+  const own = Boolean(o.use && keysInUseFor(o.use).length);
   switch (st.kind) {
     case "trial": {
       const left = st.endsAt && st.daysLeft !== null ? `${days(st.daysLeft)} left (until ${when(st.endsAt)})` : "running";
       return `Plan: free trial · ${left} · ${percent(st.usedShare)} of its usage used.`;
     }
     case "pro":
-      // Your own key in use: Pro's allowance isn't, so no share of it (planDetail says why, under it).
-      return st.paymentFailed ? `Plan: ${NAME} Pro · payment failed: ${failedWords(st)}.` : `Plan: ${proHead(st)}${o.ownKey ? "" : proUsed(st)}.`;
+      // Your own keys run all of the AI: Pro's allowance isn't used, so no share of it (planDetail says why, under it).
+      return st.paymentFailed ? `Plan: ${NAME} Pro · payment failed: ${failedWords(st)}.` : `Plan: ${proHead(st)}${o.use && ownKeysOnly(o.use) ? "" : proUsed(st)}.`;
     case "ended": {
       const on = st.endsAt && st.why !== "cap" ? ` on ${dayOf(st.endsAt)}` : "";
-      return `Plan: none. Your free trial ended${on} (${st.why === "cap" ? "its usage was used up" : "its 7 days ran out"}). Go on with ${OWN_KEY}${sale() ? `, or ${NAME} Pro: ${COMMAND} upgrade` : ""}.`;
+      const ended = `Plan: none. Your free trial ended${on} (${st.why === "cap" ? "its usage was used up" : "its 7 days ran out"}).`;
+      // Your own keys run the AI already: nothing to go on with.
+      return own ? ended : `${ended} Go on with ${OWN_KEY}${sale() ? `, or ${NAME} Pro: ${COMMAND} upgrade` : ""}.`;
     }
     case "none":
+      if (own) return "Plan: none.";
       return sale()
-        ? `Plan: none. ${NAME}'s AI runs on your own OpenRouter key (${COMMAND} keys set openrouter), the free trial (${COMMAND} setup starts it) or ${NAME} Pro (${COMMAND} upgrade).`
-        : `Plan: none. ${NAME}'s AI runs on your own OpenRouter key (${COMMAND} keys set openrouter), or the free trial: ${COMMAND} setup starts it.`;
+        ? `Plan: none. ${NAME}'s AI can run on your own OpenRouter key (${COMMAND} keys set openrouter), the free trial (${COMMAND} setup starts it) or ${NAME} Pro (${COMMAND} upgrade).`
+        : `Plan: none. ${NAME}'s AI can run on your own OpenRouter key (${COMMAND} keys set openrouter), or the free trial: ${COMMAND} setup starts it.`;
   }
 }
 
@@ -170,21 +175,24 @@ export function planLine(plan: Plan | null, trial: Trial | null, now = Date.now(
 const sale = () => proOnSale();
 
 /**
- * Said under Pro's line (Settings → Account, `kiko account`, `kiko keys`) while your own OpenRouter
- * key is set: it runs the AI, so Pro, paid for, still shows, and why it isn't used. Two lines in
- * Settings (OWN_KEY_OVER_PRO_LINES), one in a terminal.
+ * Said under the plan's line (Settings → Account, `kiko account`, `kiko keys`, the phone) while a
+ * plan is in effect and your own keys run some or all of Kiko's AI (key-words.ts keysOverPlanLines):
+ * which one pays now, and for Pro how to use it instead. Lines in Settings, one in a terminal (joined).
  */
-export const OWN_KEY_OVER_PRO_LINES = ["Your own OpenRouter key is in use, so Pro isn't being used.", `To use Pro: ${COMMAND} keys remove openrouter`] as const;
-export const OWN_KEY_OVER_PRO = OWN_KEY_OVER_PRO_LINES.join(" ");
+export function planNoteLines(plan: Plan | null | undefined, trial: Trial | null | undefined, use: AiUse | null | undefined, now = Date.now(), o: { phone?: boolean } = {}): string[] {
+  const st = planStatus(plan, trial, now);
+  if (!use || (st.kind !== "pro" && st.kind !== "trial")) return [];
+  return keysOverPlanLines(use, st.kind, o);
+}
 
-/** Pro is the plan and your own key is set: Pro's line, with OWN_KEY_OVER_PRO under it. */
-export const ownKeyOverPro = (plan: Plan | null | undefined, trial: Trial | null | undefined, ownKey: boolean, now = Date.now()) => ownKey && planStatus(plan, trial, now).kind === "pro";
+/** "Kiko Pro (monthly)", "Kiko Pro (yearly)", or "Kiko Pro" (given by hand, or not said). */
+const proName = (st: ProStatus) => `${NAME} Pro${st.interval === "month" ? " (monthly)" : st.interval === "year" ? " (yearly)" : ""}`;
 
-/** "Kiko Pro · renews 3 Dec", "Kiko Pro · ends 3 Dec" (cancelled), or "Kiko Pro" (given by hand: no billing). */
+/** "Kiko Pro (monthly) · renews 3 Dec", "Kiko Pro (yearly) · ends 3 Dec" (cancelled), or "Kiko Pro" (given by hand: no billing). */
 function proHead(st: ProStatus): string {
-  if (st.cancelAt) return `${NAME} Pro · ends ${dayOf(st.cancelAt)}`;
-  if (st.renewsAt) return `${NAME} Pro · renews ${dayOf(st.renewsAt)}`;
-  return `${NAME} Pro`;
+  if (st.cancelAt) return `${proName(st)} · ends ${dayOf(st.cancelAt)}`;
+  if (st.renewsAt) return `${proName(st)} · renews ${dayOf(st.renewsAt)}`;
+  return proName(st);
 }
 
 /** " · 31% of this month used", or nothing when the share isn't known. */
@@ -213,31 +221,35 @@ export const proUsedUpLine = (resetsAt: number | null) => `You've used this mont
 export const proPausedLine = (resetsAt: number | null) => `This month's ${NAME} Pro allowance is used; it renews ${resetsAt ? `on ${dayOf(resetsAt)}` : "next month"}.`;
 
 /**
- * The line under Pro's in `kiko account` (Settings → Account has rows of its own: planFacts): the
- * weekly pace; past the month's allowance, that it's paused and your own key goes on now; with a
- * payment failed, the month's share and the pace. Null for anything that isn't Pro, or with nothing to add.
+ * The line under the plan's in `kiko account` (Settings → Account has rows of its own: planFacts):
+ * Pro's weekly pace; past the month's allowance, that it's paused and your own key goes on now; with
+ * a payment failed, the month's share and the pace; and with your own keys in use, which one pays
+ * (planNoteLines). Null with nothing to add.
  */
-export function planDetail(plan: Plan | null, trial: Trial | null, o: { ownKey?: boolean; now?: number } = {}): string | null {
-  const st = planStatus(plan, trial, o.now ?? Date.now());
-  if (st.kind !== "pro") return null;
-  if (o.ownKey) return OWN_KEY_OVER_PRO;
+export function planDetail(plan: Plan | null, trial: Trial | null, o: { use?: AiUse | null; now?: number } = {}): string | null {
+  const now = o.now ?? Date.now();
+  const st = planStatus(plan, trial, now);
+  const note = planNoteLines(plan, trial, o.use, now).join(" ");
+  // All of the AI on your own keys: which one pays, and nothing about the plan's share.
+  if (note && o.use && ownKeysOnly(o.use)) return note;
+  if (st.kind !== "pro") return note || null;
   if (st.usedUp) return `Paused until ${st.resetsAt ? dayOf(st.resetsAt) : "next month"}: your own OpenRouter key keeps ${NAME} going now (${COMMAND} keys set openrouter)`;
   const pace = paceLine(st);
-  if (st.paymentFailed) return [st.usedShare !== null ? `${percent(st.usedShare)} of this month used` : null, pace].filter(Boolean).join(" · ") || null;
-  return pace;
+  const said = st.paymentFailed ? [st.usedShare !== null ? `${percent(st.usedShare)} of this month used` : null, pace].filter(Boolean).join(" · ") || null : pace;
+  return [said, note].filter(Boolean).join(". ") || null;
 }
 
 /**
  * The plan in a few words, for a line that's about something else (`kiko keys`'s account line):
  * "free trial, 4 days left, 31% used"; "Kiko Pro, 12% of this month used"; "free trial ended"; "no plan".
  */
-export function planBrief(plan: Plan | null, trial: Trial | null, now = Date.now(), o: { ownKey?: boolean } = {}): string {
+export function planBrief(plan: Plan | null, trial: Trial | null, now = Date.now(), o: { use?: AiUse | null } = {}): string {
   const st = planStatus(plan, trial, now);
   if (st.kind === "trial") return `free trial${st.daysLeft !== null ? `, ${days(st.daysLeft)} left` : ""}, ${percent(st.usedShare)} used`;
   if (st.kind === "pro") {
     if (st.paymentFailed) return `${NAME} Pro, payment failed (${COMMAND} account billing)`;
-    // Your own key in use: Pro's allowance isn't, so none of its share (OWN_KEY_OVER_PRO under it).
-    if (o.ownKey) return proHead(st).replace(" · ", ", ");
+    // Your own keys run all of the AI: Pro's allowance isn't used, so none of its share (planNoteLines under it).
+    if (o.use && ownKeysOnly(o.use)) return proHead(st).replace(" · ", ", ");
     if (st.usedUp) return `${NAME} Pro, this month's allowance used (back ${st.resetsAt ? dayOf(st.resetsAt) : "next month"})`;
     return `${proHead(st).replace(" · ", ", ")}${st.usedShare !== null ? `, ${percent(st.usedShare)} of this month used` : ""}`;
   }
@@ -251,48 +263,86 @@ export function planBrief(plan: Plan | null, trial: Trial | null, now = Date.now
  * No plan". `warn` (yellow, on the value only): a trial in its last NEAR_END.days days or past
  * NEAR_END.used of its usage, Pro cancelled, a payment failed, Pro near or past its month's
  * allowance. `more`: dim lines under the value, only where something needs saying (what to do about
- * a failed payment or an ended trial; your own key running the AI instead). `ownKey`: an OpenRouter
- * key of your own is set, so it runs the AI and the plan isn't used: a trial gives way to it, Pro
- * stays in sight (OWN_KEY_OVER_PRO_LINES under it, and no month's share: it isn't being used).
+ * a failed payment or an ended trial; which one pays while your own keys run some of the AI).
+ * `use`: what Kiko's AI runs on now (key-words.ts aiUse). Your own keys running all of it, the plan
+ * isn't used: it stays in sight, with why under it (planNoteLines) and no share used (none is).
  */
-export function planFacts(plan: Plan | null, trial: Trial | null, o: { ownKey?: boolean; now?: number } = {}): SettingFact[] {
-  const st = planStatus(plan, trial, o.now ?? Date.now());
+export function planFacts(plan: Plan | null, trial: Trial | null, o: { use?: AiUse | null; now?: number } = {}): SettingFact[] {
+  const now = o.now ?? Date.now();
+  const st = planStatus(plan, trial, now);
+  const unused = Boolean(o.use && ownKeysOnly(o.use));
+  const note = planNoteLines(plan, trial, o.use, now);
+  const head: SettingFact = { label: "Plan", value: planHead(st) };
   switch (st.kind) {
     case "trial": {
-      if (o.ownKey) return [{ label: "Plan", value: USING_OWN_KEY, more: ["The free trial isn't used while a key is set."] }];
-      const nearDays = st.daysLeft !== null && st.daysLeft <= NEAR_END.days;
-      return [
-        { label: "Plan", value: `Free trial${st.daysLeft !== null ? ` · ${days(st.daysLeft)} left` : ""}`, warn: nearDays },
-        { label: "Used", value: `${percent(st.usedShare)} of the trial`, warn: st.usedShare >= NEAR_END.used },
-      ];
+      if (note.length) head.more = note;
+      if (unused) return [head];
+      head.warn = st.daysLeft !== null && st.daysLeft <= NEAR_END.days;
+      return [head, { label: "Used", value: `${percent(st.usedShare)} of the trial`, warn: st.usedShare >= NEAR_END.used }];
     }
     case "pro": {
-      const head: SettingFact = { label: "Plan", value: st.paymentFailed ? `${NAME} Pro · payment failed` : proHead(st), warn: Boolean(st.cancelAt || st.paymentFailed) };
+      head.warn = Boolean(st.cancelAt || st.paymentFailed);
       const more: string[] = [];
       if (st.paymentFailed) {
         const by = st.paymentFailed.graceEndsAt;
         more.push(by ? `Update your card in Manage billing before Pro stops on ${dayOf(by)}.` : "Update your card in Manage billing, or Pro stops soon.");
       }
-      if (o.ownKey) more.push(...OWN_KEY_OVER_PRO_LINES);
+      more.push(...note);
       if (more.length) head.more = more;
-      const month = o.ownKey ? null : proMonth(st);
+      const month = unused ? null : proMonth(st);
       return month ? [head, month] : [head];
     }
-    case "ended": {
-      const value = st.why === "cap" ? "Trial ended: its usage was used up" : st.endsAt ? `Trial ended on ${dayOf(st.endsAt)}` : "Trial ended";
-      if (o.ownKey) return [{ label: "Plan", value }];
-      return [{ label: "Plan", value, more: [...ADD_OWN_KEY_LINES, ...(sale() ? [`Or get ${NAME} Pro: ${COMMAND} upgrade`] : [])] }];
-    }
+    case "ended":
+      // Your own keys run the AI already: nothing to go on with.
+      if (o.use && keysInUseFor(o.use).length) return [head];
+      return [{ ...head, more: [...ADD_OWN_KEY_LINES, ...(sale() ? [`Or get ${NAME} Pro: ${COMMAND} upgrade`] : [])] }];
     case "none":
-      return [{ label: "Plan", value: o.ownKey ? USING_OWN_KEY : "No plan" }];
+      return [head];
   }
+}
+
+/**
+ * The plan in a few words, the same everywhere it's the row's value (Settings → Account's Plan, the
+ * phone's `planText`): "Free trial · 5 days left", "Kiko Pro (monthly) · renews 3 Dec", "Kiko Pro
+ * (yearly) · payment failed", "Trial ended on 10 Nov", "No plan".
+ */
+function planHead(st: PlanStatus): string {
+  switch (st.kind) {
+    case "trial":
+      return `Free trial${st.daysLeft !== null ? ` · ${days(st.daysLeft)} left` : ""}`;
+    case "pro":
+      return st.paymentFailed ? `${proName(st)} · payment failed` : proHead(st);
+    case "ended":
+      return st.why === "cap" ? "Trial ended: its usage was used up" : st.endsAt ? `Trial ended on ${dayOf(st.endsAt)}` : "Trial ended";
+    case "none":
+      return "No plan";
+  }
+}
+
+/**
+ * What Kiko's AI runs on now, in words: the one place Settings → Account, `kiko account` and the
+ * phone (`account`'s planText, planNote and keysText) take them from, so they never disagree.
+ * `plan`: the plan in a few words (planHead), "Signed out", or null with accounts off. `planNote`:
+ * with a plan in effect and your own keys in use, which one pays now (planNoteLines). `keys`: your
+ * own keys in use (key-words.ts keysLine: "Your own OpenRouter key"); "None, so Kiko's AI is off"
+ * with neither a key nor a plan; null when the plan runs it all. `phone`: the commands are the Mac's.
+ */
+export type AiWords = { plan: string | null; planNote: string[]; keys: string | null };
+
+export function aiWords(view: { state: string; plan?: Plan | null; trial?: Trial | null } | null, use: AiUse, now = Date.now(), o: { phone?: boolean } = {}): AiWords {
+  const signedIn = view?.state === "signed-in";
+  const st: PlanStatus = signedIn ? planStatus(view.plan, view.trial, now) : { kind: "none" };
+  const inEffect = st.kind === "trial" || st.kind === "pro";
+  const keys = keysLine(use, st.kind === "pro" ? `${NAME} Pro` : "the free trial") ?? (inEffect ? null : NO_AI_KEYS);
+  return {
+    plan: !view ? null : signedIn ? planHead(st) : "Signed out",
+    planNote: signedIn ? planNoteLines(view.plan, view.trial, use, now, o) : [],
+    keys,
+  };
 }
 
 /** How to go on without the plan, in Settings: the command on a line of its own. */
 const ADD_OWN_KEY_LINES = ["To go on, add your own OpenRouter key (free):", `${COMMAND} keys set openrouter`];
-
-/** Your own key running the AI with no plan in use (a trial gives way to it): as the phone says it. */
-const USING_OWN_KEY = "Using your own OpenRouter key";
 
 /**
  * Pro's month, in a row: "31% used · this week 12%, on track"; past 80% (yellow), "85% used · this

@@ -698,7 +698,8 @@ async function planCovers(deps: SetupDeps, io: Io, run: Run, plan: AccountPlan |
 /** Pro past its month's allowance (planCovers): your own key, offered as optional. */
 const PRO_PAUSED = {
   offer: `Until then, your own OpenRouter key can run ${NAME}'s AI. It's optional: paste one, or Esc to go on without.`,
-  hasKey: `Until then, ${NAME} uses your own OpenRouter key.`,
+  // A key already (OpenRouter's or Anthropic's: keys.ts hasModel), not named: either runs it.
+  hasKey: `Until then, ${NAME} uses your own key.`,
   skipped: `No key added: ${NAME} Pro runs ${NAME}'s AI again once it renews. ${COMMAND} keys set openrouter adds one any time.`,
 };
 

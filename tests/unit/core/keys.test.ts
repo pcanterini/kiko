@@ -30,6 +30,7 @@ import {
   reasonFrom,
   type KeyFetch,
   type KeySource,
+  aiUseFor,
 } from "../../../src/core/keys.ts";
 import { keyChoices, modelChoices, STT_ENGINES, TTS_ENGINES, withKeys } from "../../../src/core/settings-options.ts";
 import { OPENROUTER_HAIKU, OPENROUTER_MODELS } from "../../../src/core/openrouter-llm.ts";
@@ -369,6 +370,24 @@ describe("settings → Keys", () => {
       withDeepgram.map((r) => r.key),
       ["key:openrouter", "key:anthropic", "key:deepgram"],
     );
+  });
+
+  test("each key set says, dim, what it's used for now: Deepgram and Cartesia too; none set, nothing said", () => {
+    const env = { OPENROUTER_API_KEY: FAKE_OR, ANTHROPIC_API_KEY: FAKE_OR, DEEPGRAM_API_KEY: FAKE_OR, CARTESIA_API_KEY: FAKE_OR };
+    const picked = { stt: "deepgram", tts: "say", llm: "haiku" };
+    const use = aiUseFor(picked, env, { planRuns: false, classifier: true });
+    const rows = keyRowsFor({ chosen: picked, env, sources: {}, keychain: new Set(), unchecked: null, store: true, use });
+    assert.deepEqual(
+      rows.map((r) => [r.key, r.detail]),
+      [
+        ["key:openrouter", "Used for quick checks"],
+        ["key:anthropic", "Used for routing and summaries (Haiku)"],
+        ["key:deepgram", "Used for speech-to-text"],
+        ["key:cartesia", "Not used now: the voice isn't Cartesia"],
+      ],
+    );
+    const none = keyRowsFor({ chosen, env: {}, sources: {}, keychain: new Set(), unchecked: null, store: true, use: aiUseFor(chosen, {}, { planRuns: false, classifier: true }) });
+    assert.ok(none.every((r) => r.detail === undefined));
   });
 
   test("the options: enter one (hidden), remove the Keychain's; or save an unchecked one anyway", () => {

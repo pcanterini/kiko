@@ -1,6 +1,6 @@
 // Settings → Keys (core/keys.ts): the API keys' rows, and a key entered, saved or removed taken up
 // at once where it can be.
-import { config, enginesFor, keys as keyFill } from "../../core/config.ts";
+import { aiUseNow, config, enginesFor, keys as keyFill } from "../../core/config.ts";
 import { settingEnv } from "../../core/env.ts";
 import { KeySettings, keysInUse, type KeyInfo } from "../../core/keys.ts";
 import { holdKey } from "../../core/key-values.ts";
@@ -52,6 +52,8 @@ export const keySettings = new KeySettings({
   restart: () => ui.set({ restartPending: true }),
   // Your own OpenRouter key while the window offers it (the trial ended): let go, and said (app/key-offer.ts).
   saved: (info) => keyOffers.keySaved(info.id),
+  // Each key's row: what it's used for now (Deepgram and Cartesia included), or why not.
+  aiUse: aiUseNow,
 });
 
 /**

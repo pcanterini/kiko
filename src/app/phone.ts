@@ -9,7 +9,7 @@
 // away at connect (plan_required), and the Mac says so once a day; the relay is shown a pass.
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
-import { config } from "../core/config.ts";
+import { aiUseNow, config } from "../core/config.ts";
 import { findSession, idsOf } from "../core/sessions.ts";
 import { checkAnswers } from "../core/ask.ts";
 import type { Target } from "../core/decide.ts";
@@ -389,12 +389,13 @@ async function startRelay(server: PhoneServer, identity: RelayIdentity) {
 
 /**
  * The Mac's plan and trial status for the phones (remote/account-status.ts): the account as last
- * known (account.json), and whether your own OpenRouter key runs Kiko's AI. Null while accounts
+ * known (account.json), whether your own OpenRouter key runs Kiko's AI, and the Mac's own words
+ * for the plan and the keys in use (config.ts aiUseNow, plan-words.ts aiWords). Null while accounts
  * aren't open (core/env.ts accountsLive): nothing is sent then.
  */
 function phoneAccount() {
   const a = appAccount();
-  return a ? accountStatus(a.view(), Boolean(keyOf("OPENROUTER_API_KEY").trim()), Date.now(), proOnSale() ? { phone: phoneIncludedNow() } : {}) : null;
+  return a ? accountStatus(a.view(), Boolean(keyOf("OPENROUTER_API_KEY").trim()), Date.now(), { use: aiUseNow(), ...(proOnSale() ? { phone: phoneIncludedNow() } : {}) }) : null;
 }
 
 /** Phones came or went, paired, were forgotten, or switched Play on phone. */
