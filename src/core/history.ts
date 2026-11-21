@@ -246,7 +246,16 @@ export class HistoryFolder {
         }
         return changed;
       }
-      if (a?.type === "queued_command" && typeof a.prompt === "string") return this.said("you", a.prompt, at);
+      // Its words are a string, or (a message with a picture, 2.1.327: imagePasteIds) blocks as a
+      // user entry's are: each text block, the picture left out. One Claude Code made itself
+      // (isMeta on the attachment: another agent's hand-back) is never yours.
+      if (a?.type === "queued_command" && !a.isMeta) {
+        if (typeof a.prompt === "string") return this.said("you", a.prompt, at);
+        if (!Array.isArray(a.prompt)) return false;
+        let changed = false;
+        for (const block of a.prompt) if (block?.type === "text") changed = this.said("you", block.text, at) || changed;
+        return changed;
+      }
       return false;
     }
     if (entry.type === "assistant" && Array.isArray(content)) {

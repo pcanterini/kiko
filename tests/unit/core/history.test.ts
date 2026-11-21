@@ -329,6 +329,66 @@ test("a spoken reply given through the Stop hook, and a message sent while Claud
   );
 });
 
+// Words said while Claude works, in the order Claude Code 2.1.327 writes them (2026-11-21): each
+// reply through the held Stop hook is that hook's hook_success, its hook_additional_context and the
+// stop_hook_summary system line (no user entry); a message typed while it's busy is a queued_command
+// attachment, its prompt blocks when it carries a picture. Each is yours, at its own time, in place.
+test("your words given mid-turn are yours, at their own time and place: hook replies, queued messages, one with a picture", () => {
+  const t = (s: number) => `2026-11-21T08:${String(10 + Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}.000Z`;
+  const reply = (s: number, words: string) => [
+    { type: "attachment", timestamp: t(s), attachment: { type: "hook_success", hookName: "Stop", hookEvent: "Stop", stdout: "{}" } },
+    {
+      type: "attachment",
+      timestamp: t(s),
+      attachment: { type: "hook_additional_context", hookName: "Stop", hookEvent: "Stop", content: [`The user replied by voice (speech-to-text, so expect small transcription errors): ${words}`] },
+      renderedRole: "system",
+    },
+    { type: "system", subtype: "stop_hook_summary", timestamp: t(s), hookAdditionalContext: ["…"] },
+  ];
+  const claude = (s: number, text: string) => ({ type: "assistant", timestamp: t(s), message: { content: [{ type: "text", text }] } });
+  const h = fold([
+    { type: "user", timestamp: t(0), message: { role: "user", content: "Paint the shed green." } },
+    claude(5, "Painted it green."),
+    ...reply(20, "Should the fence match?"),
+    claude(25, "I'd leave the fence."),
+    ...reply(55, "Fine, leave it then."),
+    { ...use("b1", "Bash", { command: "ls" }), timestamp: t(60) },
+    { type: "queue-operation", operation: "enqueue", timestamp: t(60), content: "Is the door done?" },
+    { type: "queue-operation", operation: "remove", reason: "absorbed_mid_turn", timestamp: t(62), content: "Is the door done?" },
+    { type: "attachment", timestamp: t(62), attachment: { type: "queued_command", prompt: "Is the door done?", commandMode: "prompt", origin: { kind: "human" }, humanTurn: true } },
+    {
+      type: "attachment",
+      timestamp: t(70),
+      attachment: {
+        type: "queued_command",
+        prompt: [
+          { type: "text", text: "[Image #3] Like this colour." },
+          { type: "image", source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" } },
+        ],
+        imagePasteIds: [3],
+        commandMode: "prompt",
+        origin: { kind: "human" },
+      },
+    },
+    { type: "attachment", timestamp: t(71), attachment: { type: "queued_command", isMeta: true, prompt: "A note another agent left.", commandMode: "prompt", origin: { kind: "peer" } } },
+    claude(80, "The door is done, and in that colour."),
+  ]);
+  assert.deepEqual(
+    h.items.map((i) => `${i.kind}@${i.at?.slice(14, 19)}${i.kind === "steps" ? "" : `: ${i.text}`}`),
+    [
+      "you@10:00: Paint the shed green.",
+      "claude@10:05: Painted it green.",
+      "you@10:20: Should the fence match?",
+      "claude@10:25: I'd leave the fence.",
+      "you@10:55: Fine, leave it then.",
+      "steps@11:00",
+      "you@11:02: Is the door done?",
+      "you@11:10: [Image #3] Like this colour.",
+      "claude@11:20: The door is done, and in that colour.",
+    ],
+  );
+});
+
 // The line Kiko's hook adds beside a prompt the app typed in for you (hooks/lib.mjs VOICE_PROMPT), as
 // Claude Code 2.1.325 keeps it (2026-11-14): the prompt's own entry as typed, then the hook's added
 // context as an attachment, with how it was shown to Claude. Only Claude reads it.
