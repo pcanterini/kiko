@@ -29,7 +29,7 @@ export function anthropic(options: { maxRetries?: number } = {}) {
         if (!init?.signal?.aborted) online.callFailed("anthropic", err);
         throw err;
       }
-      online.ok();
+      online.ok("anthropic");
       const retry = Number(new Headers(init?.headers).get("x-stainless-retry-count") ?? 0);
       retriesOf.set(response, Number.isFinite(retry) ? retry : 0);
       return response;

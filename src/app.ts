@@ -321,7 +321,7 @@ speaker.onIdle = () => audio.idle();
 speaker.onStalled = onStalled;
 speaker.onBack = () => void onBack();
 // The network back after Kiko took it as down (core/online.ts): words kept are retried at once.
-online.onBack = () => void backOnline();
+online.onBack = (service) => void backOnline(service);
 // Words kept when the router couldn't answer: routed again as each retry comes due, then given up on.
 keptWords.onDue = () => void retryKept();
 keptWords.onGaveUp = (left) => void gaveUp(left);

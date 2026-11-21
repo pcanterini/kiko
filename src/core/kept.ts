@@ -8,6 +8,8 @@
 // words are on Kiko's page and in the log (words_kept) all the same. Time and timers come in through
 // `clock`, so tests/unit/core/kept.test.ts runs it on a fake one.
 import { type Clock, realClock } from "./clock.ts";
+import type { SessionNote } from "./router.ts";
+import type { Session } from "./sessions.ts";
 
 /** How long kept words wait, from when they were said, for the retries, "send it" or a name. */
 export const KEPT_MS = 10 * 60_000;
@@ -20,10 +22,27 @@ export const RETRY_FOR_MS = 3 * 60_000;
 const MOST = 5;
 
 /**
- * One message kept: when it was said, and `held`: not retried any more (the retries stopped, or the
- * app asked whether still to send it), only "send it", a name or a yes sends it.
+ * The conversation as it stood when the words were said, for routing them again as then
+ * (app/deliver.ts): the sessions and their notes, the recent conversation, the session waiting for
+ * your reply or just read out, and the one last talked to. Added 2026-11-20: words kept 87s went to
+ * the session that had talked since (about them, as it happened), not the one they answered.
  */
-export type KeptEntry = { text: string; at: number; held: boolean };
+export type KeptContext = {
+  sessions: Session[];
+  notes: Map<string, SessionNote>;
+  recent: string[];
+  waitingId: string | null;
+  justSpoke: { id: string; secondsAgo: number } | null;
+  lastId: string | null;
+  heardFrom: string | null;
+};
+
+/**
+ * One message kept: when it was said, and `held`: not retried any more (the retries stopped, or the
+ * app asked whether still to send it), only "send it", a name or a yes sends it. `context`: the
+ * conversation then, when it's known.
+ */
+export type KeptEntry = { text: string; at: number; held: boolean; context?: KeptContext };
 
 export class KeptWords {
   private entries: KeptEntry[] = [];
@@ -56,10 +75,10 @@ export class KeptWords {
    * answer); false, only "send it" or a name sends them. A new one starts the retries again, for all
    * the ones not held, in order. The same words again replace the older copy. Returns any dropped as too many.
    */
-  keep(text: string, { at = this.clock.now(), retry = true }: { at?: number; retry?: boolean } = {}): KeptEntry[] {
+  keep(text: string, { at = this.clock.now(), retry = true, context }: { at?: number; retry?: boolean; context?: KeptContext } = {}): KeptEntry[] {
     this.expire();
     this.entries = this.entries.filter((e) => e.text !== text);
-    this.insert({ text, at, held: !retry });
+    this.insert({ text, at, held: !retry, ...(context ? { context } : {}) });
     const dropped = this.entries.length > MOST ? this.entries.splice(0, this.entries.length - MOST) : [];
     if (retry && !this.retry) this.retry = { tries: 0, since: this.clock.now(), dueAt: this.clock.now() + this.step(0) };
     this.arm();
@@ -216,4 +235,26 @@ export class KeptWords {
 function unref(timer: unknown) {
   (timer as { unref?: () => void } | null)?.unref?.();
   return timer;
+}
+
+/**
+ * Words kept, routed again: what the models are told, the conversation as it stood when they were
+ * said (`then`), never what came since. Each session as it was then, while it's still running (one
+ * started since, as it is `now`, with no notes from before); the session waiting for your reply then,
+ * only while it still is (`waitingNow`), else as the one that had just spoken; one waiting now that
+ * wasn't then isn't what they answer.
+ */
+export function asThen(then: KeptContext, now: Session[], waitingNow: string | null): KeptContext {
+  const running = new Set(now.map((s) => s.sessionId));
+  const old = new Set(then.sessions.map((s) => s.sessionId));
+  const sessions = [...then.sessions.filter((s) => running.has(s.sessionId)), ...now.filter((s) => !old.has(s.sessionId))];
+  const waitingId = then.waitingId && then.waitingId === waitingNow ? then.waitingId : null;
+  const justSpoke = then.justSpoke ?? (then.waitingId && !waitingId && running.has(then.waitingId) ? { id: then.waitingId, secondsAgo: 0 } : null);
+  return {
+    ...then,
+    sessions,
+    notes: new Map(sessions.map((s) => [s.sessionId, then.notes.get(s.sessionId) ?? { asked: "", said: "" }])),
+    waitingId,
+    justSpoke,
+  };
 }

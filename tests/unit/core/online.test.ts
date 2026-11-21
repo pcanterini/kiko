@@ -45,53 +45,59 @@ describe("down", () => {
     assert.equal(o.down(), null);
   });
 
-  test("a model call's network error: down; any answer after it: up", () => {
+  test("a model call's DNS error: its service down, said as offline; any answer after it: up", () => {
     const { o } = make();
     o.callFailed("anthropic", fetchFailed("ENOTFOUND"));
-    assert.match(o.down()!.detail, /anthropic: ENOTFOUND/);
-    o.ok();
-    assert.equal(o.down(), null);
+    assert.match(o.down("anthropic")!.detail, /anthropic: ENOTFOUND/);
+    assert.equal(o.down("anthropic")!.service, undefined, "the Mac's own network, not one host");
+    assert.equal(o.down(), null, "one call isn't the whole network");
+    o.ok("openrouter");
+    assert.equal(o.down("anthropic"), null, "something got through: names resolve again");
   });
 
   test("a service's own error (a 503, a bad key) isn't the network", () => {
     const { o } = make();
     o.callFailed("openrouter", new Error("Jev 503: overloaded"));
-    assert.equal(o.down(), null);
+    assert.equal(o.down("openrouter"), null);
   });
 
   test("a timeout counts only with the relay down too (the log: relay closed, then the clean-up timed out)", () => {
     const { o } = make();
-    o.callTimedOut("cleanup");
-    assert.equal(o.down(), null, "a slow model alone isn't offline");
+    o.callTimedOut("cleanup", "anthropic");
+    assert.equal(o.down("anthropic"), null, "a slow model alone isn't offline");
     o.relayConnected();
     o.relayDisconnected();
-    o.callTimedOut("cleanup");
-    assert.equal(o.down()?.why, "timeouts");
+    o.callTimedOut("cleanup", "anthropic");
+    assert.equal(o.down("anthropic")?.why, "timeouts");
+    assert.equal(o.down("anthropic")?.service, undefined, "with the relay down too: said as offline");
+    o.relayConnected();
+    assert.equal(o.down("anthropic"), null, "the relay back disproves it");
   });
 
   test("no relay to say: the router timing out twice with nothing through between is down; once isn't", () => {
     const { o, clock } = make();
-    o.callTimedOut("router");
-    assert.equal(o.down(), null);
+    o.callTimedOut("router", "anthropic");
+    assert.equal(o.down("anthropic"), null);
     clock.advance(1000);
-    o.ok();
+    o.ok("anthropic");
     clock.advance(1000);
-    o.callTimedOut("router");
-    assert.equal(o.down(), null, "an answer came between");
-    o.callTimedOut("cleanup");
-    assert.equal(o.down(), null, "a slow clean-up isn't the router");
+    o.callTimedOut("router", "anthropic");
+    assert.equal(o.down("anthropic"), null, "an answer came between");
+    o.callTimedOut("cleanup", "anthropic");
+    assert.equal(o.down("anthropic"), null, "a slow clean-up isn't the router");
     clock.advance(1000);
-    o.callTimedOut("router");
-    assert.equal(o.down()?.why, "timeouts");
+    o.callTimedOut("router", "anthropic");
+    assert.equal(o.down("anthropic")?.why, "timeouts");
+    assert.equal(o.down("anthropic")?.service, "anthropic", "named: only that service");
   });
 
   test("a sign lasts HOLD_MS: with nothing newer, the models are tried again", () => {
     const { o, clock } = make();
     o.callFailed("anthropic", fetchFailed("EAI_AGAIN"));
     clock.advance(HOLD_MS - 1);
-    assert.ok(o.down());
+    assert.ok(o.down("anthropic"));
     clock.advance(2);
-    assert.equal(o.down(), null);
+    assert.equal(o.down("anthropic"), null);
   });
 
   test("the relay's retries keep it fresh", () => {
@@ -108,8 +114,62 @@ describe("down", () => {
     o.relayConnected();
     o.relayOff();
     o.relayDisconnected();
-    o.callTimedOut("router");
+    o.callTimedOut("router", "anthropic");
+    assert.equal(o.down("anthropic"), null);
+  });
+});
+
+// 2026-11-20 (the owner's log): OpenRouter, for the optional classifier, timed out (ETIMEDOUT) while
+// the Anthropic API answered; the app took itself as offline and never asked the router (Anthropic).
+describe("one service down isn't the network", () => {
+  test("OpenRouter's time out: OpenRouter down, named; Anthropic and the network not", () => {
+    const { o } = make();
+    o.relayConnected();
+    o.callFailed("openrouter", fetchFailed("ETIMEDOUT"));
+    assert.equal(o.down("anthropic"), null, "the router on Anthropic is still asked");
     assert.equal(o.down(), null);
+    assert.equal(o.down("openrouter")?.service, "openrouter");
+    assert.match(o.down("openrouter")!.detail, /openrouter: ETIMEDOUT/);
+  });
+
+  test("a host's own failure is cleared only by its own answer (or HOLD_MS), not another's", () => {
+    const { o, clock, backs } = make();
+    o.callFailed("openrouter", fetchFailed("ECONNREFUSED"));
+    o.ok("anthropic");
+    o.relayConnected();
+    assert.ok(o.down("openrouter"), "Anthropic answering says nothing about OpenRouter");
+    clock.advance(1000);
+    o.ok("openrouter");
+    assert.equal(o.down("openrouter"), null);
+    assert.equal(backs(), 1);
+  });
+
+  test("the account's proxy is a service of its own", () => {
+    const { o } = make();
+    o.callFailed("kiko", fetchFailed("ETIMEDOUT"));
+    assert.equal(o.down("kiko")?.service, "kiko");
+    assert.equal(o.down("openrouter"), null);
+  });
+
+  test("the relay's own time out isn't the network; its DNS error is", () => {
+    const { o } = make();
+    o.relayError(new Error("connect ETIMEDOUT 1.2.3.4:443"));
+    assert.equal(o.down("anthropic"), null);
+    o.relayError(dns);
+    assert.equal(o.down("anthropic")?.why, "network", "the network: every service with it");
+    assert.equal(o.down("anthropic")?.service, undefined);
+  });
+
+  test("back names the service that came back", () => {
+    const { clock } = make();
+    const o = new Online(clock);
+    const back: (string | undefined)[] = [];
+    o.onBack = (s) => back.push(s);
+    o.callFailed("openrouter", fetchFailed("ETIMEDOUT"));
+    o.ok("anthropic");
+    assert.deepEqual(back, [], "OpenRouter not back yet");
+    o.ok("openrouter");
+    assert.deepEqual(back, ["openrouter"]);
   });
 });
 
@@ -124,7 +184,7 @@ describe("back", () => {
     o.ok();
     assert.equal(backs(), 1);
     o.callFailed("anthropic", fetchFailed("ENOTFOUND"));
-    o.ok();
+    o.ok("anthropic");
     assert.equal(backs(), 2);
   });
 });

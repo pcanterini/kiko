@@ -1,7 +1,9 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { anthropic, requestInfo } from "./anthropic.ts";
 import { config } from "./config.ts";
 import { cost, log, type TokenUsage } from "./log.ts";
 import { NAME } from "./name.ts";
+import { networkCode } from "./online.ts";
 import { streamText } from "./openrouter-llm.ts";
 import { clipReply, type ReplyKind } from "./reply-shape.ts";
 import type { SummaryLength } from "./settings.ts";
@@ -190,6 +192,18 @@ const MORE_INPUT_CHARS = 12_000;
  * fetch's own timeout (minutes) or a key press.
  */
 const STALL_MS = 20_000;
+/**
+ * A request that couldn't connect ("Connection error.", "fetch failed"), with nothing said yet, is
+ * made once more after this wait, before it's given up on. Added 2026-11-20: a network blip lost a
+ * session's summary, though the SDK's own quick retries (within ~2s) had been made; the next one,
+ * 15s later, went through.
+ */
+export const RETRY_AFTER_MS = 4000;
+
+/** The request never got an answer: it couldn't connect (the SDK's own retries made), or fetch failed. */
+export function couldNotConnect(err: unknown) {
+  return err instanceof Anthropic.APIConnectionError || err instanceof TypeError || networkCode(err) !== null;
+}
 
 /** Haiku (or the OpenRouter model picked in settings) turns what a session said into a short spoken summary. Stateless. */
 export class Summarizer {
@@ -197,10 +211,12 @@ export class Summarizer {
   private abort: AbortController | null = null;
   private cancels = 0; // cancel()s so far, for one that comes while a summary waits for the classifier
   private readonly stallMs: number;
+  private readonly retryMs: number;
 
-  /** `stallMs`: STALL_MS, unless a test has its own. */
-  constructor(o: { stallMs?: number } = {}) {
+  /** `stallMs`: STALL_MS, `retryMs`: RETRY_AFTER_MS, unless a test has its own. */
+  constructor(o: { stallMs?: number; retryMs?: number } = {}) {
     this.stallMs = o.stallMs ?? STALL_MS;
+    this.retryMs = o.retryMs ?? RETRY_AFTER_MS;
   }
 
   /** Streams the spoken text to onText. Returns it with token usage, or null if cancelled. */
@@ -299,7 +315,9 @@ export class Summarizer {
       stall.unref?.();
     };
     watch();
+    let pushed = false;
     const push = (delta: string) => {
+      pushed = true;
       watch();
       (out ? out.push : onText)(delta);
     };
@@ -308,7 +326,7 @@ export class Summarizer {
     const cache = what === "summary";
     const start = performance.now();
     const ms = () => Math.round(performance.now() - start);
-    try {
+    const once = async (): Promise<{ text: string; usage: TokenUsage; costUsd: number }> => {
       // An OpenRouter model when one is picked in settings; Haiku through the Anthropic API otherwise.
       if (config.llm !== "haiku") {
         const r = await streamText({ model: config.llm, system, prompt, maxTokens, cache, signal, onText: push, call: "summary", what });
@@ -338,6 +356,23 @@ export class Summarizer {
       // The time to first words is on the announce line (firstTokenMs); this is the whole request.
       log(what, { prompt, text, dropped, usage: final.usage, stop: final.stop_reason, ms: ms(), ...requestInfo(stream.response) });
       return { text, usage: final.usage, costUsd: cost.haiku(final.usage) };
+    };
+    try {
+      try {
+        return await once();
+      } catch (err) {
+        // Couldn't connect, nothing said yet: once more after a short wait (RETRY_AFTER_MS), then given up on.
+        if (pushed || stalled || signal.aborted || !couldNotConnect(err)) throw err;
+        log("summary_retry", { what, ms: ms(), error: err instanceof Error ? err.message : String(err), afterMs: this.retryMs });
+        clearTimeout(stall);
+        await new Promise<void>((resolve) => {
+          const t = setTimeout(resolve, this.retryMs);
+          signal.addEventListener("abort", () => (clearTimeout(t), resolve()), { once: true });
+        });
+        if (signal.aborted) return null;
+        watch();
+        return await once();
+      }
     } catch (err) {
       if (stalled) {
         log("summary_stalled", { what, ms: ms(), stallMs: this.stallMs });

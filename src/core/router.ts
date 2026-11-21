@@ -7,6 +7,7 @@ import { canDo } from "./can.ts";
 import { config } from "./config.ts";
 import { cost, log, type TokenUsage } from "./log.ts";
 import { online } from "./online.ts";
+import { llmService } from "./services.ts";
 import { callTools } from "./openrouter-llm.ts";
 import { ago, APP_FOLDER, appNamed, folderName, isStarting, sameName, sessionLabel, type Session } from "./sessions.ts";
 import { NAME, spokenName } from "./name.ts";
@@ -559,7 +560,7 @@ export class Router {
       const tries = (err as { tries?: Try[] }).tries;
       log("route_failed", { model: config.llm, text, ms, sinceHeardMs, error: err instanceof Error ? err.message : String(err), tries });
       // Every try ran out its time: with the relay down too, the Mac is taken as offline (core/online.ts).
-      if (tries?.length && tries.every((t) => t.how === "timeout")) online.callTimedOut("router");
+      if (tries?.length && tries.every((t) => t.how === "timeout")) online.callTimedOut("router", llmService());
       throw err;
     } finally {
       this.abort = null;

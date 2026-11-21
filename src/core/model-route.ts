@@ -124,15 +124,18 @@ export class ModelCalls {
       account: appAccount,
       accountActive: () => accountRunsModels(),
       aiUrl: () => aiUrl(),
-      // Whether it got through says whether the Mac is online (core/online.ts).
-      fetch: (...a) =>
-        fetch(...a).then(
-          (res) => (online.ok(), res),
+      // Whether it got through says whether the Mac, and that service, are online (core/online.ts):
+      // openrouter.ai with your own key, or the account's proxy, each a service of its own.
+      fetch: (...a) => {
+        const service = String(a[0] instanceof Request ? a[0].url : a[0]).startsWith(OPENROUTER_API) ? "openrouter" : "kiko";
+        return fetch(...a).then(
+          (res) => (online.ok(service), res),
           (err) => {
-            if (!a[1]?.signal?.aborted) online.callFailed("openrouter", err);
+            if (!a[1]?.signal?.aborted) online.callFailed(service, err);
             throw err;
           },
-        ),
+        );
+      },
       now: Date.now,
       userAgent,
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),

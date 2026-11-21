@@ -7,6 +7,7 @@ import { anthropic, requestInfo } from "./anthropic.ts";
 import { config } from "./config.ts";
 import { cost, log } from "./log.ts";
 import { online } from "./online.ts";
+import { llmService } from "./services.ts";
 import { streamText } from "./openrouter-llm.ts";
 import { cutRuns, DISFLUENT, findRun, NEGATION, tokens } from "./words.ts";
 
@@ -89,7 +90,7 @@ export async function cleanUp(text: string): Promise<Cleanup> {
     const why = signal.aborted ? "timeout" : String(err);
     log("cleanup", { model: config.llm, text, error: why, ms });
     // With the relay down too, a sign the Mac is offline (core/online.ts): the first one, 2026-11-12.
-    if (signal.aborted) online.callTimedOut("cleanup");
+    if (signal.aborted) online.callTimedOut("cleanup", llmService());
     return asSaid(text, why, 0, ms);
   }
   const ms = Math.round(performance.now() - start);

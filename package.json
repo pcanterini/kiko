@@ -1,6 +1,6 @@
 {
   "name": "kiko",
-  "version": "0.3.15",
+  "version": "0.3.16",
   "description": "A voice controller for coding agents (Claude Code, Codex, OpenCode, T3 Code) on the Mac",
   "license": "MIT",
   "homepage": "https://kiko.sh",

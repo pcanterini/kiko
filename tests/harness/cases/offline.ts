@@ -15,6 +15,9 @@ const TIMED_OUT = "no answer: 2 tries, 8000ms each";
 const FIRST = "Yes, this version is a lot better than what's live right now. Let's go with it. Merge these changes into the main branch, and then deploy it to production when you're done.";
 const SECOND = "There's more to polish later, but this is ready to go out now.";
 const OFFLINE_LINE = "I'm offline. I'll send that when I'm back.";
+const NO_ANTHROPIC_LINE = "Can't reach Anthropic: I'll send that when it's back.";
+// As Node's fetch reports a connect that timed out (2026-11-20: OpenRouter's, for the classifier).
+const connectTimedOut = () => Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("connect ETIMEDOUT 10.0.0.1:443"), { code: "ETIMEDOUT" }) });
 const FAILED_LINE = "I couldn't work out where that goes. Trying again.";
 
 export async function offlineCases() {
@@ -64,7 +67,8 @@ export async function offlineCases() {
   /** Back online, and nothing kept or retrying left over for the next case. */
   const backAndClear = async () => {
     online.relayConnected();
-    online.ok();
+    online.ok("anthropic");
+    online.ok("openrouter");
     await wait(300);
   };
   // As the log had it: the relay was connected, then went.
@@ -187,6 +191,73 @@ export async function offlineCases() {
   assert.ok(!caseLines().some((l) => l.kind === "voice" && /no longer kept/.test(l.text)), "shown, not said");
   assert.equal(typedInto(ROWAN).length, k);
   await backAndClear();
+  console.log("ok");
+
+  begin("the classifier's OpenRouter times out, the router's Anthropic answers: sent, never 'offline'; next words skip only the classifier");
+  {
+    const asked = routedTo(ROWAN);
+    let classified = 0;
+    T.utterance = () => {
+      classified++;
+      // As core/model-route.ts notes it, then the classifier's own error.
+      online.callFailed("openrouter", connectTimedOut());
+      throw new Error("fetch failed (ETIMEDOUT)");
+    };
+    k = typedInto(ROWAN).length;
+    await talk(FIRST);
+    await until(() => typedInto(ROWAN).length > k);
+    await talk(SECOND);
+    await until(() => typedInto(ROWAN).length > k + 1);
+    await wait(200);
+    assert.deepEqual(asked, [FIRST, SECOND], "the router asked both times");
+    assert.equal(classified, 1, "OpenRouter known down: the classifier skipped the second time");
+    assert.deepEqual(typedInto(ROWAN).slice(k), [FIRST, SECOND]);
+    assert.equal(logged("route_fallback").length, 0, "not offline");
+    assert.ok(!caseLines().some((l) => l.kind === "voice" && /offline|Can't reach/.test(l.text)), "nothing said about it");
+    assert.ok(
+      caseLines().some((l) => /OpenRouter isn't answering; routing without it\./.test(l.text)),
+      "shown: which service, and that it routes anyway",
+    );
+    await backAndClear();
+  }
+  console.log("ok");
+
+  begin("kept while Anthropic can't be reached, routed again once it's back with the conversation as it was: not to the session read out since");
+  {
+    process.env.KIKO_TEST_KEPT_STEPS_MS = "60000"; // no retry by itself: only Anthropic back sends it
+    await announced(ROWAN); // the words answer Rowan, just read out
+    T.utterance = () => ({ audience: "app", audienceConfidence: 0.3, intent: "message", intentConfidence: 1 });
+    let firstRecent: string[] = [];
+    T.route = (input: any) => {
+      firstRecent = input.recent;
+      online.callFailed("anthropic", connectTimedOut());
+      throw new Error("Connection error.");
+    };
+    k = typedInto(ROWAN).length;
+    const kp = typedInto(PIXEL).length;
+    await talk(FIRST);
+    await until(() => spoke(NO_ANTHROPIC_LINE));
+    // Meanwhile pixel's turn is read out.
+    await announced(PIXEL);
+    // A router that goes by what it's told: the session waiting, else the one just read out.
+    const inputs: any[] = [];
+    T.route = (input: any) => {
+      inputs.push(input);
+      const id = input.waitingId ?? input.justSpoke?.id;
+      return [{ name: "pass_on", session: input.sessions.find((x: any) => x.sessionId === id) }];
+    };
+    online.ok("anthropic");
+    await until(() => typedInto(ROWAN).length > k, 3000, "sent to Rowan");
+    await until(() => spoke("Sent to Rowan."));
+    delete process.env.KIKO_TEST_KEPT_STEPS_MS;
+    assert.deepEqual(typedInto(ROWAN).slice(k), [FIRST]);
+    assert.equal(typedInto(PIXEL).length, kp, "not pixel, read out since");
+    assert.equal(inputs.length, 1);
+    assert.equal(inputs[0].justSpoke?.id, ROWAN.sessionId, "the one just read out when they were said");
+    assert.deepEqual(inputs[0].recent, firstRecent, "the conversation as it was: nothing from after them");
+    assert.equal(said(NO_ANTHROPIC_LINE), 1);
+    await backAndClear();
+  }
   console.log("ok");
 
   T.route = () => [];

@@ -24,11 +24,12 @@ import type { Held } from "../agents/types.ts";
 import { ui } from "../core/ui-store.ts";
 import { log, totals } from "../core/log.ts";
 import { routeCostLine } from "../core/cost-lines.ts";
-import { backLine, gaveUpLine, sentLine, STALE_MS, staleLine } from "../core/fallback.ts";
-import { KEPT_MS, type KeptEntry } from "../core/kept.ts";
+import { backLine, gaveUpLine, sentLine, STALE_MS, staleLine, withoutClassifierLine } from "../core/fallback.ts";
+import { asThen, KEPT_MS, type KeptContext, type KeptEntry } from "../core/kept.ts";
 import type { Entry } from "../core/timeline.ts";
 import { appEnv } from "../core/env.ts";
-import { online } from "../core/online.ts";
+import { networkCode, serviceName } from "../core/online.ts";
+import { classifierDown, openrouterService, routerDown } from "../core/services.ts";
 import { writeState } from "./status.ts";
 import { answerPermission, answerQuestion, askedOf, contextFor, heardLast, noteSummaryFeedback, repeatFor, tellMore } from "./announce.ts";
 import { knownProjects, startInApp, startSession } from "./new-session.ts";
@@ -110,7 +111,11 @@ type Retrying = { entry: KeptEntry; stale: "ask" | "hold" };
  * can't, and nothing said then.
  */
 async function decideAndAct(text: string, press: number, to: Target | null, onTheirWay: () => void, heardAt: number, retrying?: Retrying): Promise<"failed" | "done"> {
-  const waiting = floor.waiting;
+  // Words kept, routed again: decided with the conversation as it stood when they were said (`then`,
+  // kept.ts asThen), never what came since. The session waiting for them then, only while it still
+  // is; one waiting now that wasn't then isn't what they answer.
+  const then = retrying?.entry.context ?? null;
+  const waiting = then ? (floor.waiting && !floor.waiting.isPermission && floor.waiting.sessionId === then.waitingId ? floor.waiting : null) : floor.waiting;
   // The app asked to pair or set up the phone while the iPhone app isn't out (core/env.ts
   // phoneLive): one plain line, nothing done. Not with a session waiting for these words.
   if (!retrying && !waiting && !to && !phoneLive() && asksPhone(leadingName(text).rest || text)) {
@@ -120,22 +125,28 @@ async function decideAndAct(text: string, press: number, to: Target | null, onTh
     await speakLine(PHONE_NOT_OUT);
     return "done";
   }
-  // Known to be offline (core/online.ts): no model is asked, so nothing waits out a time limit for
-  // one; decide() asks again as it goes, since it can go down meanwhile.
-  const down = online.down();
-  const offline = () => online.down()?.detail ?? null;
+  // The router's service known to be down (core/online.ts): no model on it is asked, so nothing
+  // waits out a time limit for one; decide() asks again as it goes, since it can go down meanwhile.
+  // The classifier's service is its own: down, only the classifier is skipped.
+  const down = routerDown();
+  const offline = () => {
+    const d = routerDown();
+    return d ? { detail: d.detail, ...(d.service ? { service: serviceName(d.service) } : {}) } : null;
+  };
+  const classifierOffline = () => classifierDown()?.detail ?? null;
   // The clean-up of your words starts first, before the sessions are listed (decide() only waits
   // for it when your words go to a session). Not for a permission prompt's yes or no, nor words
   // kept (cleaned up already).
   const cleaning = config.cleanUp && !waiting?.isPermission && !down && !retrying ? cleanUp(text) : null;
   void cleaning?.then((c) => (totals.llm += c.costUsd));
   // A permission prompt takes your words as its answer: no sessions or notes needed for that.
-  const sessions = waiting?.isPermission ? [] : await getSessions();
+  const asWas = then && asThen(then, await getSessions(), waiting?.sessionId ?? null);
+  const sessions = asWas ? asWas.sessions : waiting?.isPermission ? [] : await getSessions();
   // Nothing waiting, but a session was read out moments before you started talking (its window
   // had just closed): your words most likely answer it, so the classifier and the router take it like the one waiting.
   const spokeLast = floor.spokeLast;
   const sinceSpoke = spokeLast ? Math.max(0, floor.pressedAt - spokeLast.at) : Infinity;
-  const justSpoke = !waiting && spokeLast && sinceSpoke < JUST_SPOKE_MS ? { id: spokeLast.sessionId, secondsAgo: Math.round(sinceSpoke / 1000) } : null;
+  const justSpoke = asWas ? asWas.justSpoke : !waiting && spokeLast && sinceSpoke < JUST_SPOKE_MS ? { id: spokeLast.sessionId, secondsAgo: Math.round(sinceSpoke / 1000) } : null;
   // What "skip that" skips: the announcement your press put back before you heard it, or the next in line.
   const skippable = floor.skippable(Boolean(justSpoke));
   const lastEntry = timeline.recent(1)[0];
@@ -156,16 +167,30 @@ async function decideAndAct(text: string, press: number, to: Target | null, onTh
   const question = asked && (asked.told ? { ...asked.question, told: true } : asked.question);
   // Your words as the router was asked them, noted in the conversation then.
   const noted: { entry?: Entry } = {};
+  const lastId = asWas ? asWas.lastId : (state.target?.sessionId ?? null);
+  const heardFrom = asWas ? asWas.heardFrom : (heardLast()?.sessionId ?? null);
+  // What the models are told of the conversation: as it stands now, or for words kept, as it stood then.
+  const context: KeptContext = asWas
+    ? asWas
+    : {
+        sessions,
+        notes: notesFor(sessions, RECENT),
+        // The held words as if sent, as the models would see them once they had been.
+        recent: linesOf([
+          ...timeline.recent(RECENT),
+          ...(held?.kind === "send" || held?.kind === "ask" ? [{ at: held.startedAt, who: "you" as const, sessionId: held.to.sessionId, folder: held.name, text: held.text }] : []),
+        ]),
+        waitingId: waiting?.sessionId ?? null,
+        justSpoke,
+        lastId,
+        heardFrom,
+      };
   const decision = await decide(
     {
       text,
       sessions,
-      notes: notesFor(sessions, RECENT),
-      // The held words as if sent, as the models would see them once they had been.
-      recent: linesOf([
-        ...timeline.recent(RECENT),
-        ...(held?.kind === "send" || held?.kind === "ask" ? [{ at: held.startedAt, who: "you" as const, sessionId: held.to.sessionId, folder: held.name, text: held.text }] : []),
-      ]),
+      notes: context.notes,
+      recent: context.recent,
       waiting: waiting && {
         sessionId: waiting.sessionId,
         cwd: waiting.cwd,
@@ -173,7 +198,7 @@ async function decideAndAct(text: string, press: number, to: Target | null, onTh
         ...(waiting.questions ? { questions: true } : {}),
       },
       justSpoke,
-      lastId: state.target?.sessionId ?? null,
+      lastId,
       // A repeat ending in a session's question isn't the app asking.
       appAsked,
       lastSent: held
@@ -191,7 +216,7 @@ async function decideAndAct(text: string, press: number, to: Target | null, onTh
       holding: Boolean(held),
       skippable: Boolean(skippable),
       lastRepeat,
-      heardFrom: heardLast()?.sessionId ?? null,
+      heardFrom,
       voiceCan: config.voiceCan,
       quickTask: state.quick && { task: state.quick.task },
       // The app just offered a session for a quick task: a yes to it starts one with the task.
@@ -210,8 +235,10 @@ async function decideAndAct(text: string, press: number, to: Target | null, onTh
       kept: retrying ? null : keptWords.pending(),
     },
     {
-      utterance: classifierEnabled() ? decideUtterance : null,
-      approval: classifierEnabled() && !down ? decideApproval : null,
+      // Not for words kept, routed again: the router alone, at once (the classifier only adds its 4s
+      // when its service is the one that's down).
+      utterance: classifierEnabled() && !retrying ? decideUtterance : null,
+      approval: classifierEnabled() && !classifierOffline() ? decideApproval : null,
       route: (input) => router.route(input, () => {}),
       trim: down ? null : trimForClaude,
       clean: cleaning && (() => cleaning),
@@ -220,6 +247,7 @@ async function decideAndAct(text: string, press: number, to: Target | null, onTh
         if (!retrying) noted.entry = timeline.add({ who: "you", sessionId: null, folder: null, text: words });
       },
       offline,
+      classifierOffline,
     },
   );
   // A correction the app could only ask about ("That already went to Kiko project. Which session
@@ -235,10 +263,10 @@ async function decideAndAct(text: string, press: number, to: Target | null, onTh
     const taken = keptWords.take();
     log("kept_taken", { how: decision.keptUsed, texts: taken.map((e) => e.text), to: decision.actions.find(isSend)?.session.sessionId ?? null });
   }
-  if (decision.keep) keep(decision.keep.text, heardAt);
+  if (decision.keep) keep(decision.keep.text, heardAt, true, context);
   // New words for a session while words kept wait for a retry, and the router answers again: those
   // go first, in the order said (each routed as it would have been), never after newer ones.
-  if (!retrying && !decision.keptUsed && !decision.fallback && decision.actions.some(isSend) && keptWords.retrying && !online.down()) await flushKept();
+  if (!retrying && !decision.keptUsed && !decision.fallback && decision.actions.some(isSend) && keptWords.retrying && !routerDown()) await flushKept();
   // The phone's talk: nothing to send is Kiko's to deal with (a send says where as it goes: holdIf).
   if (!decision.actions.some(isSend)) talks.routed(null);
   // The router gave no answer: the phone shows what was said, as the Mac says it.
@@ -251,7 +279,7 @@ async function decideAndAct(text: string, press: number, to: Target | null, onTh
   if (decision.step === "name-only") ui.info(`(only "${text.trim()}": nothing sent)`);
   // Your words as decided on: "Kiko, …" without the name (wake.ts).
   const words = decision.text;
-  noteSummaryFeedback(words, decision, waiting && !waiting.isPermission ? waiting.sessionId : (justSpoke?.id ?? null));
+  if (!retrying) noteSummaryFeedback(words, decision, waiting && !waiting.isPermission ? waiting.sessionId : (justSpoke?.id ?? null));
   // A press while the app decided (a press while the router thought used to drop these words, and
   // nothing said so). What it decided still happens: a send waits for the new
   // words, held (holdIf), so they can cancel or redirect it; otherwise it goes first.
@@ -431,9 +459,12 @@ function keptNote(text: string, retrying = false) {
   return `(kept, not sent: "${flat(text, 80)}". ${how.charAt(0).toUpperCase()}${how.slice(1)})`;
 }
 
-/** Words to keep (decide()'s, said `at`): kept, logged and shown on Kiko's page. `retry`: routed again by themselves. */
-export function keep(text: string, at: number, retry = true) {
-  const dropped = keptWords.keep(text, { at, retry });
+/**
+ * Words to keep (decide()'s, said `at`): kept, logged and shown on Kiko's page. `retry`: routed again
+ * by themselves; `context`: the conversation as it stood then, which they're routed again with.
+ */
+export function keep(text: string, at: number, retry = true, context?: KeptContext) {
+  const dropped = keptWords.keep(text, { at, retry, ...(context ? { context } : {}) });
   log("words_kept", { text, retry, kept: keptWords.list().length });
   for (const e of dropped) log("kept_expired", { text: e.text, why: "too many" });
   ui.info(keptNote(text, retry));
@@ -493,7 +524,7 @@ export async function retryKept() {
   retryRunning = true;
   try {
     while (keptWords.retrying) {
-      const down = online.down();
+      const down = routerDown();
       if (down) {
         log("kept_retry", { ok: false, why: "offline", error: down.detail, skipped: true });
         return keptWords.failedAgain();
@@ -536,14 +567,17 @@ export async function gaveUp(left: readonly KeptEntry[]) {
  * say where they went as they go ("Sent to Rowan."). Ones the retries gave up on are only mentioned,
  * once ("I'm back online. Your last message is still waiting: …"). Otherwise nothing: being back is no news.
  */
-export async function backOnline() {
-  log("online_back", { kept: keptWords.list().length, retrying: keptWords.retrying });
+export async function backOnline(service?: string) {
+  // Back, but not the service the router needs (OpenRouter answering, Anthropic still not): nothing yet.
+  const still = routerDown();
+  log("online_back", { kept: keptWords.list().length, retrying: keptWords.retrying, ...(service ? { service } : {}), ...(still ? { routerDown: still.detail } : {}) });
+  if (still) return;
   if (keptWords.retrying) return keptWords.now();
   if (!keptWords.pending()) return;
   if (floor.pressed) await waitFor(() => !floor.pressed, KEY_UP_WAIT_MS);
   // Sent or gone while the key was down.
-  const still = keptWords.pending();
-  if (still) await speakLine(backLine(still.texts.length));
+  const left = keptWords.pending();
+  if (left) await speakLine(backLine(left.texts.length));
 }
 
 /** The first few words, for a line that says which words it means: "quick test from the phone…". */
@@ -606,7 +640,8 @@ function report(d: Decision) {
   // A name said that's no session's, taken as one's ("Lazey" for Lacy): asked about, or the router's guess.
   if (d.guess) log("name_guess", { ...d.guess, name: currentName(d.guess.sessionId) ?? null });
   for (const e of d.errors) {
-    if (e.where === "classify_utterance") ui.error("classifier", e.message);
+    // Its service not answering (a network error, out of time): said so plainly, the words routed without it.
+    if (e.where === "classify_utterance") ui.error("classifier", unreachable(e.message) ? withoutClassifierLine(serviceName(openrouterService())) : e.message);
     log("error", e);
   }
   if (d.toApp) log("name_up_front", { text: d.text, said: d.nameSaid, ...(d.nameAlso?.length ? { alsoSession: d.nameAlso } : {}) });
@@ -629,6 +664,9 @@ function report(d: Decision) {
     log("route_turn", { llmCost: r.costUsd, said: r.text, actions: r.actions.length });
   }
 }
+
+/** A model call's error that says its service didn't answer: a network error, or out of time. */
+const unreachable = (message: string) => networkCode(new Error(message)) !== null || /\btime(?:d)?[ -]?out\b|aborted/i.test(message);
 
 /** Whose words an action carries out: their press's number, and what lets the next words be decided (deliver). */
 type Mine = { press: number; onTheirWay: () => void };

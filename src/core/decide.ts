@@ -256,11 +256,26 @@ export type DecideDeps = {
   /** Called just before the router is asked with `text`, your words as decided on (the app notes them and the turn then). */
   beforeRoute?: (text: string) => void;
   /**
-   * Why the network is known to be down now (core/online.ts), or null: the classifier and the router
-   * aren't asked then, and the fallback is at once. Asked as each is about to be: it can go down
-   * while your words are decided.
+   * Why the router can't be asked now (core/online.ts: the network, or the router's own service,
+   * known to be down), or null: the router isn't asked then, and the fallback is at once. Asked as
+   * it's about to be: it can go down while your words are decided. `service`: only that one is
+   * unreachable, said by its name ("Can't reach Anthropic: …").
    */
-  offline?: (() => string | null) | null;
+  offline?: (() => Offline | string | null) | null;
+  /**
+   * Why the classifier can't be asked now (its own service down), or null: not asked, decided as
+   * with it off. Absent: as `offline`. The classifier is optional: its service down never stops the
+   * router (2026-11-20: OpenRouter timing out kept words for 80s while Anthropic answered).
+   */
+  classifierOffline?: (() => string | null) | null;
+};
+
+/** The router can't be asked: why, and the one service that's unreachable, when that's all it is. */
+export type Offline = { detail: string; service?: string };
+
+const offlineOf = (deps: DecideDeps): Offline | null => {
+  const down = deps.offline?.() ?? null;
+  return typeof down === "string" ? { detail: down } : down;
 };
 
 /** Words for a session, minus what was cut as meant for the app. */
@@ -424,12 +439,12 @@ export type Decision = {
    * The router gave no answer (`skipped`: not asked, the network known to be down), and what the app
    * did instead: kept the words (`kept`), or only said so.
    */
-  fallback?: { why: FallbackWhy; error: string; skipped: boolean; kept: boolean };
+  fallback?: { why: FallbackWhy; error: string; skipped: boolean; kept: boolean; service?: string };
   /** Words to keep and route again (core/kept.ts). */
   keep?: { text: string };
   /** The words kept before were taken: sent (`sent`), or decided again as if just said (`redecided`). */
   keptUsed?: "sent" | "redecided";
-  /** The network was known to be down: the classifier wasn't asked (why, for the log). */
+  /** The classifier's service was known to be down: it wasn't asked (why, for the log). */
   offline?: string;
 };
 
@@ -909,8 +924,8 @@ function keptFor(s: DecideState, text: string): Act | "redo" | null {
 /** The classifier on your words; null when it's off or failed (the failure noted in `out`). */
 async function utteranceOf(s: DecideState, deps: DecideDeps, out: Decision, reachable: Session[]): Promise<UtteranceDecision | null> {
   if (!deps.utterance) return null;
-  // Known to be offline: not asked (it would only run out its 4s), decided as with it off.
-  const down = deps.offline?.() ?? null;
+  // Its service known to be down: not asked (it would only run out its 4s), decided as with it off.
+  const down = deps.classifierOffline !== undefined ? (deps.classifierOffline?.() ?? null) : (offlineOf(deps)?.detail ?? null);
   if (down) {
     out.offline = down;
     return null;
@@ -966,8 +981,8 @@ async function route(s: DecideState, deps: DecideDeps, out: Decision, appParts: 
   deps.beforeRoute?.(text);
   // Known to be offline (core/online.ts): not asked. It would wait out two 8s tries (2026-11-12, 12s
   // each for two messages) for an answer that can't come.
-  const down = deps.offline?.() ?? null;
-  if (down) return routeFailed(s, deps, out, noAnswer, { why: "offline", error: down, skipped: true });
+  const down = offlineOf(deps);
+  if (down) return routeFailed(s, deps, out, noAnswer, { why: "offline", error: down.detail, skipped: true, ...(down.service ? { service: down.service } : {}) });
   let result: RouteResult | null;
   try {
     result = await deps.route({
@@ -991,7 +1006,8 @@ async function route(s: DecideState, deps: DecideDeps, out: Decision, appParts: 
   } catch (err) {
     // No answer (router.ts route_failed: every try timed out or failed, no key). A new press isn't
     // this: it answers null. Offline by now (the failure itself may have said so): said as that.
-    return routeFailed(s, deps, out, noAnswer, { why: deps.offline?.() ? "offline" : "failed", error: message(err), skipped: false });
+    const after = offlineOf(deps);
+    return routeFailed(s, deps, out, noAnswer, { why: after ? "offline" : "failed", error: message(err), skipped: false, ...(after?.service ? { service: after.service } : {}) });
   }
   if (!result) return;
   out.router = result;
@@ -1062,10 +1078,10 @@ async function route(s: DecideState, deps: DecideDeps, out: Decision, appParts: 
  * were the app's (`noAnswer` "say") are only said not done. Before 2026-11-12 the router's failure
  * was thrown, and app/talk.ts said "Something went wrong, and I didn't send that.", the words gone.
  */
-async function routeFailed(s: DecideState, deps: DecideDeps, out: Decision, noAnswer: WhenNoAnswer, f: { why: FallbackWhy; error: string; skipped: boolean }) {
+async function routeFailed(s: DecideState, deps: DecideDeps, out: Decision, noAnswer: WhenNoAnswer, f: { why: FallbackWhy; error: string; skipped: boolean; service?: string }) {
   out.fallback = { ...f, kept: false };
   if (noAnswer === "say") {
-    out.actions.push({ type: "say", text: notDoneLine(f.why), why: "route_fallback" });
+    out.actions.push({ type: "say", text: notDoneLine(f.why, f.service), why: "route_fallback" });
     return;
   }
   // "Send it." with nothing kept (keptFor took it otherwise): not words to keep and send later, where
@@ -1078,7 +1094,7 @@ async function routeFailed(s: DecideState, deps: DecideDeps, out: Decision, noAn
   const words = (await clean(s, deps, { type: "send", session: { sessionId: "", cwd: "" }, text: s.text })).text;
   out.fallback = { ...out.fallback, kept: true };
   out.keep = { text: words };
-  out.actions.push({ type: "say", text: keptLine(f.why), why: "route_fallback_kept" });
+  out.actions.push({ type: "say", text: keptLine(f.why, f.service), why: "route_fallback_kept" });
 }
 
 /**

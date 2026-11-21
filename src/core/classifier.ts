@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { config } from "./config.ts";
 import { log } from "./log.ts";
 import { online } from "./online.ts";
+import { openrouterService } from "./services.ts";
 import { modelCalls } from "./model-route.ts";
 import { shadow, shadowModelFor } from "./shadow.ts";
 
@@ -40,7 +41,7 @@ export async function decide<K extends string>(
   // had already closed) is tried once more on a fresh one, within the same 4s. Timeouts aren't.
   const request = post().catch((err) => {
     // Out of time: with the relay down too, a sign the Mac is offline (core/online.ts).
-    if (deadline.aborted) online.callTimedOut("classifier");
+    if (deadline.aborted) online.callTimedOut("classifier", openrouterService());
     if (deadline.aborted || !(err instanceof TypeError)) throw err;
     log("classify_retry", { what, id, cause: causeOf(err) });
     return post().catch((again) => {

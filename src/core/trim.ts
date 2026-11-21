@@ -9,6 +9,7 @@ import { anthropic, requestInfo } from "./anthropic.ts";
 import { config } from "./config.ts";
 import { cost, log } from "./log.ts";
 import { online } from "./online.ts";
+import { llmService } from "./services.ts";
 import { streamText } from "./openrouter-llm.ts";
 import { NAME, spokenName } from "./name.ts";
 import { aboutAppBehaviour, namesSaidToApp, startsSaidToApp } from "./routing-rules.ts";
@@ -87,7 +88,7 @@ export async function trimForClaude(input: { text: string; to: { sessionId: stri
     const ms = Math.round(performance.now() - start);
     log("trim", { model: config.llm, text, error: signal.aborted ? "timeout" : String(err), ms });
     // With the relay down too, a sign the Mac is offline (core/online.ts).
-    if (signal.aborted) online.callTimedOut("trim");
+    if (signal.aborted) online.callTimedOut("trim", llmService());
     return { text, dropped: [], costUsd: 0, ms };
   }
   const ms = Math.round(performance.now() - start);

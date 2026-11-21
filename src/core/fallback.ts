@@ -9,15 +9,23 @@ export type FallbackWhy = "offline" | "failed";
 /** Words routed again later this long after they were said are asked about first: the session may have moved on. */
 export const STALE_MS = 2 * 60_000;
 
-/** Said once as the words are kept: they're retried by themselves. */
-export function keptLine(why: FallbackWhy) {
+/**
+ * Said once as the words are kept: they're retried by themselves. `service`: offline is only that
+ * one service the router needs being unreachable (core/online.ts), so it's named.
+ */
+export function keptLine(why: FallbackWhy, service?: string) {
+  if (why === "offline" && service) return `Can't reach ${service}: I'll send that when it's back.`;
   return why === "offline" ? "I'm offline. I'll send that when I'm back." : "I couldn't work out where that goes. Trying again.";
 }
 
 /** Said for words that were the app's to deal with (a question about a session, the dictionary): nothing to keep. */
-export function notDoneLine(why: FallbackWhy) {
+export function notDoneLine(why: FallbackWhy, service?: string) {
+  if (why === "offline" && service) return `Can't reach ${service}, so I couldn't do that. Ask again once it's back.`;
   return why === "offline" ? "I'm offline, so I couldn't do that. Ask again once I'm back." : "Something went wrong, so I couldn't do that. Ask again in a moment.";
 }
+
+/** Shown (not said) when the optional classifier's service doesn't answer: your words go by the router alone. */
+export const withoutClassifierLine = (service: string) => `${service} isn't answering; routing without it.`;
 
 /** The retries stopped with words still unsent (kept.ts RETRY_MAX, RETRY_FOR_MS): kept for "send it" or a name. */
 export function gaveUpLine(count: number) {
