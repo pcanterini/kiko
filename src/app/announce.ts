@@ -48,6 +48,7 @@ import {
   QUIET_NEEDS_USER,
   QUIET_WORTH,
   RISKY,
+  arrivals,
   asking,
   audio,
   currentName,
@@ -183,6 +184,8 @@ function watchTyping(request: Held) {
 
 /** Remembers words the app types into a session, so their queued prompt isn't taken for yours. */
 export function noteTyped(sessionId: string, text: string) {
+  // Watched too, whichever terminal it goes through: whether it comes in whole (core/arrived.ts).
+  arrivals.typing(sessionId, text);
   const recent = (ownTyping.get(sessionId) ?? []).filter((t) => Date.now() - t.at < OWN_TYPING_MS);
   recent.push({ text: promptKey(text), at: Date.now() });
   ownTyping.set(sessionId, recent);

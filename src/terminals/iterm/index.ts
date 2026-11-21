@@ -3,7 +3,8 @@
 // to the session process's own), typed into with `write text … newline false` (bytes written as if
 // typed, to that session only, whichever tab or window is in front: nothing is selected or brought
 // forward), then Enter on its own; keys are their bytes the same way (Escape is one ESC). Words
-// with line breaks, or Codex's, go in as one bracketed paste. `screen` is the session's `contents`.
+// with line breaks, long words (../paste.ts), or Codex's, go in as one bracketed paste. `screen` is
+// the session's `contents`.
 // New sessions open in a new window (the only script that brings iTerm forward).
 //
 // iTerm's `write text` goes to every session of the window while you have its Broadcast Input on

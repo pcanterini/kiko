@@ -20,6 +20,7 @@
 import { basename } from "node:path";
 import { log } from "../../core/log.ts";
 import { shellWord } from "../../core/shell.ts";
+import { asPaste } from "../paste.ts";
 import { literal, SHELLS } from "../tmux/index.ts";
 import type { Command, Findable, Found, Mapping, Place, Terminal, Typed } from "../types.ts";
 import { listViewOf } from "../views.ts";
@@ -306,8 +307,10 @@ export function ttyTerminal(app: TtyApp, d: TtyDeps): Terminal {
         return sent.status === "sent" ? { sent: true } : notSent(sent, tab, "its tab changed just as I typed, so nothing went in");
       }
       // Line breaks only in a bracketed paste: without one, each would send what came before it.
-      // One line as a bracketed paste too, for a program that wants it (Place.bracketed: Codex).
-      const paste = lines > 1 || place.bracketed === true;
+      // One line as a bracketed paste too when it's long, or for a program that wants it
+      // (Place.bracketed: Codex): ../paste.ts (typed, long words reach it in pieces, and Claude Code
+      // kept only the last). The app can't say whether the program asks for one: these are agents' TUIs, which do.
+      const paste = asPaste(words, { asks: true, always: place.bracketed === true });
       log("terminal_type", { via: app.id, id: place.id, text: words, lines, ...(paste && lines === 1 ? { bracketed: true } : {}) });
       if (words) {
         const sent = await send(tab, paste ? bracketed(words) : words);

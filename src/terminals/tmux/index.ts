@@ -13,8 +13,8 @@
 // ← parks a session and its process stays: ../views.ts). A pane scrolled back (tmux's copy mode, where keys would be taken as tmux's commands) is
 // brought back to the bottom first, as typing in it would. Anything else off: not sent, and why.
 // Text goes in through a tmux buffer (over stdin: never on a command line), pasted only if tmux
-// finds the pane as it was checked, in the same step; several lines as one bracketed paste. Enter
-// on its own after a moment, checked again first.
+// finds the pane as it was checked, in the same step; several lines, or long words, as one bracketed
+// paste (../paste.ts). Enter on its own after a moment, checked again first.
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import { log } from "../../core/log.ts";
@@ -26,6 +26,7 @@ import { parseKey } from "./keys.ts";
 import { showSession } from "./show.ts";
 import { BACK_TMUX, freeName, LEAVE_TMUX, NO_ANSWER, noServer, processes, sessionNameFor, tmuxArg, tmuxFormatArg, tmuxPath, tmuxRunner, WINDOW, type Proc } from "./tmux.ts";
 import { describe, HOME, ROLE, setLabel, show } from "./window.ts";
+import { asPaste } from "../paste.ts";
 
 /** What the adapter needs of tmux and the computer: real for the app, fake for the unit tests. */
 export type Runner = {
@@ -390,8 +391,10 @@ export function tmuxTerminal(r: Runner): Terminal {
       let words = literal(text);
       if (!before.pane.paste) words = words.replace(/\s*\n\s*/g, " ");
       const lines = words.split("\n").length;
-      // One line as a bracketed paste too, for a program that wants it (Place.bracketed: Codex) and asks for them.
-      const bracketed = lines > 1 || (place.bracketed === true && before.pane.paste);
+      // One line as a bracketed paste too when it's long, or for a program that wants it
+      // (Place.bracketed: Codex), if the program asks for them (../paste.ts: typed, long words reach
+      // it in pieces, and Claude Code kept only the last).
+      const bracketed = asPaste(words, { asks: before.pane.paste, always: place.bracketed === true });
       log("terminal_type", { via: "tmux", id: place.id, text: words, lines, ...(bracketed && lines === 1 ? { bracketed } : {}) });
       try {
         const pasted = words ? await paste(before.pane, words, bracketed) : true;

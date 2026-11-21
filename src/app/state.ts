@@ -11,6 +11,7 @@ import { keyOf } from "../core/key-values.ts";
 import { appEnv } from "../core/env.ts";
 import { micChoice, MicWatch } from "../core/mic-device.ts";
 import { Deepgram } from "../core/deepgram.ts";
+import { Arrivals } from "../core/arrived.ts";
 import { Dictated } from "../core/dictated.ts";
 import { Summarizer } from "../core/summarizer.ts";
 import { Cartesia } from "../core/cartesia.ts";
@@ -296,6 +297,9 @@ export const talks = new Talks((phoneId, status) => state.phone?.talkStatus(phon
 // Your dictated words typed into a session, until it takes them in: its agent is told they were
 // spoken (core/dictated.ts; session-ops.ts typeInto notes them, the agents' hooks ask).
 export const dictated = new Dictated();
+// Long words the app typed into a session, until it takes them in: whether they came in whole
+// (core/arrived.ts; announce.ts noteTyped notes them, app.ts asks as each prompt comes in).
+export const arrivals = new Arrivals();
 // Presses said on a phone for a new session's first message (talk_start `dictate`: remote/new-session.ts):
 // their words kept for its new_session, never routed. `state.phoneDictation`: the one whose button is down.
 export const dictations = new Dictations();

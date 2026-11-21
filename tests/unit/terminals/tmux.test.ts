@@ -363,6 +363,18 @@ describe("type: checked, then literally, then Enter", () => {
     await terminal.type(PLACE, "first\n  second");
     assert.deepEqual(pasted, [{ pane: "%1", text: "first second", bracketed: false }]);
   });
+  test("one long line (a dictation over 512 bytes): one bracketed paste while the pane asks for one, typed where it doesn't", async () => {
+    const long = "word ".repeat(220).trim();
+    const asks = fake({ panes: [pane()], procs: [SHELL, CLAUDE] });
+    await asks.terminal.type(PLACE, long);
+    assert.deepEqual(asks.pasted, [{ pane: "%1", text: long, bracketed: true }]);
+    const doesnt = fake({ panes: [pane({ paste: false })], procs: [SHELL, CLAUDE] });
+    await doesnt.terminal.type(PLACE, long);
+    assert.deepEqual(doesnt.pasted, [{ pane: "%1", text: long, bracketed: false }]);
+    const short = fake({ panes: [pane()], procs: [SHELL, CLAUDE] });
+    await short.terminal.type(PLACE, "word ".repeat(100).trim());
+    assert.equal(short.pasted[0].bracketed, false);
+  });
   test("control characters never go in: no Escape sequences smuggled in the words", () => {
     assert.equal(literal("hi\u001b[2J there\u0007\ttab\r\nnext"), "hi[2J there tab\nnext");
   });

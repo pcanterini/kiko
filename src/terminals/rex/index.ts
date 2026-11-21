@@ -12,8 +12,8 @@
 // sessions (../views.ts). And the send itself goes in only if the process in front is still that
 // one (and, for a bracketed paste, it still asks for one), checked by Rex in the same step
 // (./rex.ts SEND). Several lines go in as one bracketed paste (Rex's paste event, which brackets it
-// as the program asked); one line is typed, unless the session wants a bracketed paste
-// (Findable.bracketed: Codex's) and its program asks for those. Enter on its own after a moment,
+// as the program asked); so do long words and every message of a session that wants a bracketed
+// paste (Findable.bracketed: Codex's), when its program asks for those (../paste.ts); else typed. Enter on its own after a moment,
 // checked again first. Anything off: not sent, and why.
 //
 // Rex is listed only while a session may be in it (rexNeeded): one whose hook said Rex, or one whose
@@ -28,6 +28,7 @@ import { basename } from "node:path";
 import { log } from "../../core/log.ts";
 import { shellWord } from "../../core/shell.ts";
 import { literal, POSIX_SHELLS, SHELLS } from "../tmux/index.ts";
+import { asPaste } from "../paste.ts";
 import type { Command, Findable, Found, Place, Terminal, Typed } from "../types.ts";
 import { listViewOf } from "../views.ts";
 import {
@@ -261,8 +262,10 @@ export function rexTerminal(d: RexDeps): Terminal {
       let words = literal(text);
       if (!before.block.paste) words = words.replace(/\s*\n\s*/g, " ");
       const lines = words.split("\n").length;
-      // One line as a bracketed paste too, for a program that wants it (Place.bracketed: Codex) and asks for them.
-      const paste = lines > 1 || (place.bracketed === true && before.block.paste);
+      // One line as a bracketed paste too when it's long, or for a program that wants it
+      // (Place.bracketed: Codex), if the program asks for them (../paste.ts: typed, long words reach
+      // it in pieces, and Claude Code kept only the last).
+      const paste = asPaste(words, { asks: before.block.paste, always: place.bracketed === true });
       log("terminal_type", { via: "rex", id: place.id, text: words, lines, ...(paste && lines === 1 ? { bracketed: true } : {}) });
       if (words) {
         const sent = await send(place.id, { text: words, paste }, place.pid!);

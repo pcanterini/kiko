@@ -266,6 +266,21 @@ describe("Rex: typing, checked again first, the send guarded by the process chec
     assert.deepEqual(doesnt.sends[0].what, { text: "hello", paste: false });
   });
 
+  test("one long line (a dictation over 512 bytes): Rex's paste event while its program asks for one, typed where it doesn't", async () => {
+    const long = "word ".repeat(220).trim();
+    const asks = fakeRex();
+    await asks.rex.type(at(B1, 200), long);
+    assert.deepEqual(asks.sends[0].what, { text: long, paste: true });
+    assert.deepEqual(asks.sends[1].what, { key: { key: "enter", text: "\r" } });
+    const doesnt = fakeRex({ inspect: (b) => inspected({ block: b, paste: false }) });
+    await doesnt.rex.type(at(B1, 200), long);
+    assert.deepEqual(doesnt.sends[0].what, { text: long, paste: false });
+    // Counted in bytes: 200 characters of three bytes each are 600.
+    const wide = fakeRex();
+    await wide.rex.type(at(B1, 200), "語".repeat(200));
+    assert.equal((wide.sends[0].what as { paste: boolean }).paste, true);
+  });
+
   test("its process moved out of the block (or another one is in front): refused, nothing sent", async () => {
     for (const [now, why] of [
       [inspected({ pid: 999, up: [998] }), "it isn't running in that Rex pane any more"],

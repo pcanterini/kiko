@@ -274,8 +274,16 @@ const atPromptTyping = new Set<string>();
  * which one it was (StartingSessions.startedAs): then under those of every one still starting.
  */
 export function agentDictated(sessionId: string, prompt: string) {
+  return dictated.take(promptIds(sessionId), prompt);
+}
+
+/**
+ * Every ID words typed or given to a session were noted under, for a prompt it just took in: each
+ * it goes by, and those it may have had while it started (StartingSessions.startedAs).
+ */
+export function promptIds(sessionId: string) {
   const listed = Boolean(findSession(ui.state.sessions, sessionId));
-  return dictated.take([...idsFor(sessionId), ...starting.startedAs(sessionId, listed)], prompt);
+  return [...idsFor(sessionId), ...starting.startedAs(sessionId, listed)];
 }
 
 /** One the app opened ended before it started (`why`): said, with what becomes of the words held for it. */

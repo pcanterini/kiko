@@ -13,6 +13,7 @@ import type { Mapping, Typed } from "../terminals/types.ts";
 import type { By } from "../core/starting.ts";
 import { closeGracefully, closeSteps, endFromOutside, endSteps, type Closed, type Ended, type Tidied } from "../core/close.ts";
 import { flat } from "../core/text.ts";
+import type { Short } from "../core/arrived.ts";
 import { DICTATED_QUEUED_MS, DICTATED_WITHIN_MS } from "../core/dictated.ts";
 import { ui } from "../core/ui-store.ts";
 import { VOICE_CAN } from "../core/settings-options.ts";
@@ -352,6 +353,22 @@ export async function notReached(session: Session, text: string, line: string, r
   if (retry) state.unsent = { to: { sessionId: session.sessionId, cwd: session.cwd }, text, at: Date.now() };
   if (floor.pressed) await waitFor(() => !floor.pressed, KEY_UP_WAIT_MS);
   await speakLine(line);
+}
+
+/**
+ * Words the app typed into a session came in cut short (core/arrived.ts: the prompt it took in was
+ * only their start or their end): logged loudly, shown, and said, never let pass as sent; kept for
+ * "try again", which types them whole again (long words go in as one paste: src/terminals/paste.ts).
+ */
+export async function cutShort(sessionId: string, short: Short) {
+  const session = findSession(ui.state.sessions, sessionId);
+  const name = session ? sessionName(session) : "the session";
+  const part = short.at === "end" ? "the end" : "the start";
+  log("typed_short", { sessionId, typed: short.typed, got: short.got, at: short.at, text: short.text });
+  ui.info(`(only ${part} of your words reached ${name}: ${short.got} of ${short.typed} characters)`);
+  if (session) state.unsent = { to: { sessionId: session.sessionId, cwd: session.cwd }, text: short.text, at: Date.now() };
+  if (floor.pressed) await waitFor(() => !floor.pressed, KEY_UP_WAIT_MS);
+  await speakLine(`Only ${part} of your message reached ${session ? spoken(name) : name}.${session ? TRY_AGAIN_LINE.replace("send it", "send it whole") : ""}`);
 }
 
 /** What Voice can may stop: a message to a session that isn't waiting, a quick check, the dictionary, starting, stopping or renaming a session, a folder's trust. */

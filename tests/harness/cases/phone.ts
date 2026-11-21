@@ -367,6 +367,36 @@ export async function phoneCases() {
   await wait(1700);
   console.log("ok");
 
+  // 2026-11-21: a 1158-character dictation typed into Claude Code in Rex came in as its last 136
+  // characters, and nothing said so. Every typing the app does is watched now (core/arrived.ts):
+  // the prompt the session takes in, compared with the long words typed there.
+  begin("long words typed into a session that come in cut short: logged, said, and kept for try again; whole, nothing");
+  await T.hooks.listen();
+  let long = "";
+  for (let i = 0; long.length < 1158; i++) long += `w${i} lorem ipsum dolor `;
+  long = long.slice(0, 1158).trim();
+  from = p.got.length;
+  await p.send({ type: "type", text: long, sessionId: "term-1", talkId: "typed-long" });
+  await p.next("talk_status", (m) => m.talkId === "typed-long" && m.stage === "delivered", from);
+  assert.equal(T.typed.at(-1).text, long);
+  // Whole (as Claude Code hands a long paste on, between its lines): nothing said.
+  await promptHook(`\n\n<pasted_content id="ab12">\n${long}\n</pasted_content id="ab12">\n`);
+  await wait(100);
+  assert.equal(events("typed_short").length, 0);
+  // The same words again, and only their end comes in.
+  from = p.got.length;
+  await p.send({ type: "type", text: long, sessionId: "term-1", talkId: "typed-long-2" });
+  await p.next("talk_status", (m) => m.talkId === "typed-long-2" && m.stage === "delivered", from);
+  await promptHook(long.slice(1022));
+  await until(() => events("typed_short").length === 1, 3000, "the cut logged");
+  const cut = events("typed_short")[0];
+  assert.deepEqual([cut.sessionId, cut.typed, cut.got, cut.at], ["term-1", long.length, long.slice(1022).trim().length, "end"]);
+  await until(() => spoke("Only the end of your message reached atlas agents. Say try again to send it whole."), 3000, "the cut said");
+  assert.ok(info(`(only the end of your words reached atlas-agents: ${cut.got} of ${cut.typed} characters)`));
+  T.hooks.unlisten();
+  await wait(1700);
+  console.log("ok");
+
   begin("phone: words for Kiko itself: routed to it, then answered; a session that's gone fails at once");
   const savedRoute = T.route;
   T.utterance = () => ({ audience: "app", audienceConfidence: 0.2, intent: "other", intentConfidence: 0.2 });

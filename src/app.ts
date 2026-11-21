@@ -69,7 +69,7 @@ import { online } from "./core/online.ts";
 import { guardFor } from "./app/guard.ts";
 import { agentAnswered, openPicker, pickedPlace, setWindow, startFromWindow } from "./app/new-session.ts";
 import { checkHeard, idsFor, pairPhone, promptId, refreshAddresses, setPhone } from "./app/phone.ts";
-import { endOutside, endSession, renameSession, renameWhenIdle, stopSession } from "./app/session-ops.ts";
+import { cutShort, endOutside, endSession, renameSession, renameWhenIdle, stopSession } from "./app/session-ops.ts";
 import { applySetting, captureHotkey, labelIn, refreshSettings } from "./app/settings-screen.ts";
 import { answerAgents, checkAgents, safeHealth, upgradeAgentHooks } from "./app/settings/agents.ts";
 import { addWord, refreshHints, removeWord } from "./app/settings/dictionary.ts";
@@ -82,12 +82,13 @@ import { addSaying, removeSaying, testSaying } from "./app/settings/pronunciatio
 import { restartWhenHeard, updateChanged, updater } from "./app/settings/updates.ts";
 import { modelName, previewVoice, voiceName } from "./app/settings/voice.ts";
 import { heardNow, onBack, onIdle, onPlaying, onStalled, speakLine, stopTalking } from "./app/speech.ts";
-import { agentDictated, checkStarting, getSessions, loginWatch, loginWatched, starting, trustScratch } from "./app/starting.ts";
+import { agentDictated, checkStarting, promptIds, getSessions, loginWatch, loginWatched, starting, trustScratch } from "./app/starting.ts";
 import { sessionsListed, standing, standingCard, stands } from "./app/standing.ts";
 import {
   PHONES_BACK_MS,
   STATE_FILE,
   applyMute,
+  arrivals,
   asking,
   audio,
   cartesia,
@@ -618,6 +619,9 @@ async function main() {
   // agentDictated), so the agent is told they were spoken. Once each.
   agent.dictated = agentDictated;
   agent.onPromptSubmitted = (sessionId, prompt) => {
+    // Words the app typed in there that came in cut short (core/arrived.ts): said, never let pass.
+    const short = arrivals.took(promptIds(sessionId), prompt);
+    if (short) void cutShort(sessionId, short);
     talks.promptSubmitted(idsFor(sessionId), prompt);
     // Typed into its terminal, if the Mac had input just then (remote/seen-on-mac.ts).
     state.phone?.macUsed("prompt");

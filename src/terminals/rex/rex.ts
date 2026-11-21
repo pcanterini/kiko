@@ -25,7 +25,7 @@ export const BLOCK_ID = /^block:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-
 /** A session's id as Rex writes it. */
 export const SESSION_ID = /^session:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-/** Rex's server socket on a Mac (`rex whoami`'s endpoint); KIKO_REX_SOCKET names another (the tests: none). */
+/** Rex's server socket on a Mac (`rex whoami`'s endpoint); KIKO_REX_SOCKET names another (the unit tests: none; a live test: a throwaway server), which every rex command then talks to. */
 export const rexSocket = () => envVar("REX_SOCKET") ?? join(homedir(), "Library", "Application Support", "rex", "server.sock");
 
 /** Where Rex for Mac keeps its CLI (it puts that folder on the shell's PATH). */
@@ -309,22 +309,30 @@ function parse(out: string): unknown {
 const REQUEST = "2s";
 const WHOLE_MS = 4000;
 
-/** rex's environment: Kiko's own, without the block and session Kiko may have been started from. */
-function rexEnv(): NodeJS.ProcessEnv {
+/** rex's environment: Kiko's own, without the block and session Kiko may have been started from (and the server, when one is named). */
+function rexEnv(named: boolean): NodeJS.ProcessEnv {
   const env = { ...process.env };
   delete env.REX_SESSION;
   delete env.REX_BLOCK;
   delete env.REX_WINDOW;
   delete env.REX_CLIENT;
+  if (named) delete env.REX_SERVER;
   return env;
 }
+
+/** The server KIKO_REX_SOCKET names (a throwaway one, for a live test): rex talks to that one, as rexRunning looks at it. */
+const serverArgs = () => {
+  const named = envVar("REX_SOCKET");
+  return named ? ["--server", named] : [];
+};
 
 /** `rex <args>` on the local server (never starting one), `input` on its stdin: what it printed; rejects with what it said. */
 export function runRex(args: string[], input?: string): Promise<string> {
   const path = rexPath();
   if (!path) return Promise.reject(new Error("rex isn't installed"));
   return new Promise((resolve, reject) => {
-    const child = execFile(path, ["--autostart=false", "--timeout", REQUEST, "--color", "never", ...args], { env: rexEnv(), timeout: WHOLE_MS, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
+    const server = serverArgs();
+    const child = execFile(path, [...server, "--autostart=false", "--timeout", REQUEST, "--color", "never", ...args], { env: rexEnv(server.length > 0), timeout: WHOLE_MS, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) reject(new Error(String(stderr).trim() || err.message));
       else resolve(String(stdout));
     });

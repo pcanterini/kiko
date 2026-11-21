@@ -302,6 +302,16 @@ describe("iTerm: typing, its process looked at again first, the send's script fi
     assert.equal(sends[0].data, "\u001b[200~hello\u001b[201~");
   });
 
+  test("one long line (a dictation over 512 bytes): one bracketed paste, then Enter on its own", async () => {
+    const { terminal, sends } = fake(ITERM);
+    const long = "word ".repeat(220).trim();
+    await terminal.type(at(ITERM, S1, T1, 200), long);
+    assert.deepEqual(
+      sends.map((s) => s.data),
+      [`\u001b[200~${long}\u001b[201~`, "\r"],
+    );
+  });
+
   test("its process ended, moved to another tty, stopped, or behind something else: refused, nothing sent", async () => {
     for (const [now, why] of [
       [null, "its process has ended"],
