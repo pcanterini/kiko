@@ -49,6 +49,12 @@ export function buildState(c: Case, opts: { dictionary: boolean; classifierMinCo
     if (m) return { at, who: "claude", sessionId: get(m[1]).sessionId, folder: m[1], text: m[2] };
     throw new Error(`${c.id}: can't read recent line ${JSON.stringify(line)}`);
   });
+  // Your last words to the app, which it dealt with itself (a quick check, its answer, a session it opened).
+  if (c.handled) {
+    const mine = entries.findLast((e) => e.who === "you");
+    if (!mine || mine.sessionId) throw new Error(`${c.id}: handled needs a "you → app" line as your last words`);
+    mine.handled = c.handled;
+  }
   // Your last words to a session, while that's the latest thing the app did for you: what "that was for X" corrects.
   let lastSent: DecideState["lastSent"] = null;
   if (c.lastSent !== undefined) {
@@ -58,6 +64,7 @@ export function buildState(c: Case, opts: { dictionary: boolean; classifierMinCo
     // With the other sessions the same words went to in the same go.
     const also = e ? sentWith(entries, e).map((x) => ({ sessionId: x.sessionId!, folder: x.folder! })) : [];
     if (e?.sessionId) lastSent = { sessionId: e.sessionId, folder: e.folder!, text: e.text, ...(also.length ? { also } : {}) };
+    else if (e?.handled) lastSent = { sessionId: "", folder: "", text: e.text, app: e.handled };
   }
   const lastRepeat = Boolean(entries.findLast((e) => e.who === "you" || e.repeated)?.repeated);
   const lastLine = recent[recent.length - 1] ?? "";
@@ -73,7 +80,7 @@ export function buildState(c: Case, opts: { dictionary: boolean; classifierMinCo
     recent,
     waiting: waiting && { sessionId: waiting.sessionId, cwd: waiting.cwd, ...(c.permission ? { permission: c.permission.request } : {}) },
     justSpoke: c.justSpoke ? { id: get(c.justSpoke.session).sessionId, secondsAgo: c.justSpoke.secondsAgo } : null,
-    lastId: c.last ? get(c.last).sessionId : (lastSent?.sessionId ?? null),
+    lastId: c.last ? get(c.last).sessionId : lastSent?.sessionId || null,
     appAsked,
     lastSent,
     lastRepeat,

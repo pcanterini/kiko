@@ -22,6 +22,12 @@ import { QUICK_ASK_WAIT_MS, answerer, floor, secs, state, timeline, whatOf } fro
 
 // ── Quick tasks ─────────────────────────────────────────────────────────────
 
+type Quick = NonNullable<typeof state.quick>;
+/** The quick task whose answer isn't said yet: still running, or done and waiting for you to stop talking. */
+let unsaid: Quick | null = null;
+/** Quick tasks a correction took off the app (dropQuickTask): their answer is never said. */
+const dropped = new WeakSet<Quick>();
+
 /**
  * "How much disk space do I have?": a one-off, read-only Claude Code run (quick-task.ts) in the
  * background, while the app goes on listening and announcing. Its answer is spoken when it's done.
@@ -40,6 +46,7 @@ export async function startQuickTask(task: string, cwd: string, said: string) {
   state.handOff = null;
   const mine = { task, cwd, startedAt: Date.now(), run: runQuickTask(options) };
   state.quick = mine;
+  unsaid = mine;
   landed(null);
   ui.task(`${task} (in ${shortPath(cwd)}, ${config.quickTaskModel}, read-only)`);
   log("quick_task_start", { said, ...options, allowedTools: allowedTools(), ...(auto ? {} : { autoUnavailable: true }) });
@@ -48,7 +55,15 @@ export async function startQuickTask(task: string, cwd: string, said: string) {
 }
 
 /** Says what the quick task found, once you're not talking and your words aren't being dealt with. */
-async function finishQuickTask(mine: NonNullable<typeof state.quick>, said: string) {
+async function finishQuickTask(mine: Quick, said: string) {
+  try {
+    await sayQuickResult(mine, said);
+  } finally {
+    if (unsaid === mine) unsaid = null;
+  }
+}
+
+async function sayQuickResult(mine: Quick, said: string) {
   const r = await mine.run.result;
   if (state.quick === mine) state.quick = null;
   writeState();
@@ -73,6 +88,8 @@ async function finishQuickTask(mine: NonNullable<typeof state.quick>, said: stri
   });
   if (r.outcome === "cancelled") return; // cancelQuickTask said so
   while (floor.pressed || floor.replying) await new Promise((resolve) => setTimeout(resolve, 100));
+  // "That was for Rowan": the words went there instead, and what was found here isn't said.
+  if (dropped.has(mine)) return;
   // What it ends with is said as the check's result: the phone keeps it as "Kiko checked: <task>".
   const checked = { checked: mine.task };
   if (r.outcome === "timeout") return speakLine("That took too long, so I stopped checking.", true, undefined, checked);
@@ -147,6 +164,27 @@ export function quickAsked(request: Held): QuickAsk | null {
     },
     done: resume,
   });
+}
+
+/**
+ * "Send that to Rowan", "that was for Rowan" right after a quick check (decide.ts handledBy): the
+ * words go to that session instead, so the check stops if it's still running, and what it found
+ * isn't said if it's done but not yet read out (2026-11-20: it was read out after the words went).
+ * True when there was one to stop or keep quiet; false when its answer was said already.
+ */
+export function dropQuickTask(said: string): boolean {
+  const mine = unsaid;
+  if (!mine) return false;
+  unsaid = null;
+  dropped.add(mine);
+  const running = state.quick === mine;
+  log("quick_task_dropped", { said, task: mine.task, running, afterMs: Date.now() - mine.startedAt });
+  if (running) {
+    mine.run.cancel();
+    state.quick = null;
+    writeState();
+  }
+  return true;
 }
 
 /** "Stop", "cancel that" while a quick task runs. */

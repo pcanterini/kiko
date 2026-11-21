@@ -276,3 +276,19 @@ describe("tool calls → actions", () => {
     assert.equal(a.name === "rename_session" && a.newName, "claude speech");
   });
 });
+
+describe("words the app dealt with itself (<you_handled>)", () => {
+  test("shown with how, and its rule added, only when there are some; no session's name in the rule", async () => {
+    const plain = await route("messages");
+    assert.doesNotMatch(plain.sent.prompt, /<you_handled/);
+    assert.doesNotMatch(plain.sent.system, /<you_handled>/);
+    const { sent } = await route("messages", undefined, { handled: { text: "Did the import finish?", how: "quick_task" } });
+    assert.match(sent.prompt, /<you_handled how="a quick check">Did the import finish\?<\/you_handled>/);
+    const rule = sent.system.split("\n").find((l) => l.includes("<you_handled>")) ?? "";
+    assert.match(rule, /call resend_to with that session and say nothing/);
+    assert.match(rule, /Never pass_on such a correction/);
+    for (const s of world.sessions) assert.ok(!rule.toLowerCase().includes(sessionName(s).toLowerCase()), sessionName(s));
+    // The rest of the instructions as every other route reads them.
+    assert.equal(sent.system.replace(`\n${rule}`, ""), plain.sent.system);
+  });
+});

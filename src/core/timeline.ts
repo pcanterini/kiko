@@ -34,7 +34,16 @@ export type Entry = {
   aside?: "undo" | "asked";
   /** Your words for a session that a "never mind" took back (`aside` "undo"): stopped or never read, so a correction has nothing left to stop. */
   undone?: boolean;
+  /**
+   * Your words the app dealt with itself, sent to no session: a quick check it ran, its own answer, a
+   * session it opened. While that's the latest thing it did for you, "send that to Rowan" or "that
+   * was for Rowan" means these words (latestSend), never the correction itself.
+   */
+  handled?: Handled;
 };
+
+/** How the app dealt with your words itself (Entry.handled). */
+export type Handled = "quick_task" | "answered" | "start";
 
 // Enough for an hour or two of talk: what you asked a session half an hour ago still routes (topics).
 const MAX_ENTRIES = 300;
@@ -116,7 +125,8 @@ export class Timeline {
 
   /**
    * Your most recent words that went to a session, if within `withinMs`. With `latest`, only when
-   * that send is the latest thing the app did for you (see latestSend).
+   * that send is the latest thing the app did for you (see latestSend); or your words the app dealt
+   * with itself (Entry.handled, no session), when those are.
    */
   lastSent(withinMs: number, latest = false): Entry | undefined {
     return latestSend(this.entries, withinMs, latest);
@@ -158,6 +168,9 @@ export class Timeline {
  * Your words set aside (Entry.aside) don't end it: "No, cancel that." then "That was for Rowan." sends
  * the words cancelled to Rowan (once, "Your last words didn't go to a session").
  * An undo only stands aside for the send it took back (`undone`).
+ * With `latest`, your words the app dealt with itself (Entry.handled: a quick check, its answer, a
+ * session it opened) count as that send too, with no session: "that was for Rowan" right after a
+ * quick check sends what you asked there (2026-11-20: the correction itself was typed in instead).
  */
 export function latestSend(entries: Entry[], withinMs: number, latest = false, now = Date.now()): Entry | undefined {
   const announced = new Set<string>();
@@ -174,6 +187,7 @@ export function latestSend(entries: Entry[], withinMs: number, latest = false, n
       undid ||= e.aside === "undo";
       continue;
     }
+    if (e.who === "you" && e.handled) return undid || announced.size ? undefined : e;
     if (e.who === "you") return undefined;
     if (e.who === "claude" && e.spoken && e.sessionId) announced.add(e.sessionId);
   }

@@ -15,7 +15,7 @@ import { trimForClaude } from "../core/trim.ts";
 import { leadingName } from "../core/wake.ts";
 import { cleanUp, leftOut } from "../core/cleanup.ts";
 import { loadDictionary } from "../core/dictionary.ts";
-import { decide, type Act, type Cleaned, type Decision, type Question, type Sent, type Target, type Trimmed } from "../core/decide.ts";
+import { decide, handledBy, type Act, type Cleaned, type Decision, type Question, type Sent, type Target, type Trimmed } from "../core/decide.ts";
 import { Hold } from "../core/hold.ts";
 import type { Asked } from "../core/question.ts";
 import { APP_QUESTION_MS, asksPhone, asksYou, bareReply, JUST_SPOKE_MS, REDIRECT_WITHIN_MS, RETRY_MS, UNDO_WITHIN_MS, voiceAllows } from "../core/routing-rules.ts";
@@ -33,7 +33,7 @@ import { classifierDown, openrouterService, routerDown } from "../core/services.
 import { writeState } from "./status.ts";
 import { answerPermission, answerQuestion, askedOf, contextFor, heardLast, noteSummaryFeedback, repeatFor, tellMore } from "./announce.ts";
 import { knownProjects, startInApp, startSession } from "./new-session.ts";
-import { cancelQuickTask, offerHandOff, startQuickTask } from "./quick-task.ts";
+import { cancelQuickTask, dropQuickTask, offerHandOff, startQuickTask } from "./quick-task.ts";
 import { allowed, interrupt, renameSession, stopSession, turnOnVoice, typeInto } from "./session-ops.ts";
 import { VOICE_CAN_SAID } from "../core/voice-off.ts";
 import { addWord, removeWord } from "./settings/dictionary.ts";
@@ -212,7 +212,10 @@ async function decideAndAct(text: string, press: number, to: Target | null, onTh
               ...(sent.notSent ? { notSent: true } : {}),
               ...(sent.undone ? { undone: true } : {}),
             }
-          : null,
+          : sent?.handled
+            ? // Your words the app dealt with itself (a quick check, its answer): sent to no session.
+              { sessionId: "", folder: "", text: sent.text, app: sent.handled }
+            : null,
       holding: Boolean(held),
       skippable: Boolean(skippable),
       lastRepeat,
@@ -253,6 +256,10 @@ async function decideAndAct(text: string, press: number, to: Target | null, onTh
   // A correction the app could only ask about ("That already went to Kiko project. Which session
   // was it for?"): set aside, so the answer ("Rowan.") still resends the words it was about.
   if (noted.entry && decision.actions.some((a) => a.type === "say" && a.why === "resend_same")) noted.entry.aside = "asked";
+  // Your words the app dealt with itself (a quick check, its own answer, a session it opened):
+  // "that was for Rowan" next sends them there (timeline.ts latestSend). Not under a held send: that's what's latest.
+  const how = noted.entry && !held ? handledBy(decision) : null;
+  if (noted.entry && how) noted.entry.handled = how;
   report(decision);
   if (retrying) {
     const r = await retried(retrying, decision);
@@ -698,11 +705,15 @@ async function carryOut(action: Act, d: Decision, text: string, waiting: Held | 
       return holdIf(action, mine, (said) => sendTo(action.session, action.text, said ? null : action.line));
     case "ask":
       return holdIf(action, mine, (said) => sendTo(action.session, action.message, said ? null : `Asking ${spoken(sessionName(action.session))}.`));
-    case "resend":
+    case "resend": {
       // The router noted your words as it was asked; otherwise they're noted here.
       if (!d.router) timeline.add({ who: "you", sessionId: null, folder: null, text });
+      // Words the app was checking itself: the check stops now (or its answer isn't said), before
+      // any hold, so it can't be read out over the words going where they belong.
+      const stoppedCheck = action.last.app === "quick_task" && dropQuickTask(text);
       // Held words nobody got: they just go there.
-      return holdIf(action, mine, (said) => (action.last.held ? redirectHeld(action.session, action.last, said, action.text) : resend(action.session, action.last, action.text)));
+      return holdIf(action, mine, (said) => (action.last.held ? redirectHeld(action.session, action.last, said, action.text) : resend(action.session, action.last, action.text, stoppedCheck)));
+    }
     case "stop":
       return stopSession(action.session);
     case "stop_ignored":
@@ -1076,14 +1087,17 @@ async function undo(waiting: Held | null, text: string) {
  * can do everything; one that finished, or moved on to something newer, is left alone. Nothing
  * more is typed into a wrong one: a note you didn't say ("ignore that") is a new instruction it
  * could act on in ways you can't see. `text`: the words that go, when not the same as sent
- * (decide.ts: without a name heard wrong up front, "Too rowing, …").
+ * (decide.ts: without a name heard wrong up front, "Too rowing, …"). Words the app dealt with
+ * itself (Sent.app: a quick check, its answer) went to no session, so nothing is stopped there;
+ * `stoppedCheck`: the quick check they started was stopped (dropQuickTask), and said so.
  */
-async function resend(to: Target, last: Sent, text = last.text) {
+async function resend(to: Target, last: Sent, text = last.text, stoppedCheck = false) {
   log("redirect", { to: to.sessionId, lastSent: last, ...(text !== last.text ? { text } : {}) });
   const name = spoken(nameOf(to));
   // Words that never reached it (Sent.notSent), or that "no, cancel that" took back already
   // (Sent.undone: stopped, or taken off its queue): nothing to stop there, nor to say again.
-  const got = [...(last.notSent || last.undone ? [] : [{ sessionId: last.sessionId, folder: last.folder }]), ...(last.undone ? [] : (last.also ?? []))];
+  // Words the app dealt with itself (Sent.app) went to no session.
+  const got = last.app ? [] : [...(last.notSent || last.undone ? [] : [{ sessionId: last.sessionId, folder: last.folder }]), ...(last.undone ? [] : (last.also ?? []))];
   const already = got.some((x) => x.sessionId === to.sessionId);
   const sessions = await getSessions(0);
   const stopped: string[] = [];
@@ -1111,7 +1125,9 @@ async function resend(to: Target, last: Sent, text = last.text) {
       : `That already went to ${name}.`
     : stopped.length
       ? `Stopped ${andList(stopped)} and sent it to ${name}.`
-      : `Sent it to ${name} instead.`;
+      : stoppedCheck
+        ? `Stopped checking and sent it to ${name}.`
+        : `Sent it to ${name} instead.`;
   const line = [
     first,
     done.length ? `${andList(done)} already got it too.` : "",

@@ -720,6 +720,43 @@ export async function quickTaskCases() {
   T.quick.resolve({ ...ANSWER, outcome: "timeout", text: "no answer within 60s" });
   await until(() => spoke("That took too long, so I stopped checking."));
   console.log("ok");
+
+  // A question meant for a session got a quick check; "send that to atlas" is about it: the question
+  // goes there as asked, the check stops, and the correction itself is typed nowhere (2026-11-20).
+  begin("quick task: 'send that to atlas' after a check: the question goes there, the check stops, the correction doesn't");
+  const QUESTION = "did the nightly import finish on the staging box";
+  T.utterance = () => ({ audience: "app", audienceConfidence: 0.3, intent: "other", intentConfidence: 0.1 });
+  T.route = () => [{ name: "quick_task", task: "Did the nightly import finish?", cwd: homedir() }];
+  await talk(QUESTION);
+  const checking = T.quick;
+  let told: any = null;
+  T.route = (input: any) => ((told = input), [{ name: "resend_to", session: TERM }]);
+  const typed = T.typed.length;
+  await talk("you should send that to atlas, don't check it yourself");
+  await until(() => T.typed.length > typed);
+  assert.deepEqual(told.handled, { text: QUESTION, how: "quick_task" });
+  assert.ok(checking.cancelled, "the check stopped");
+  assert.deepEqual(T.typed.slice(typed), [{ terminalId: "ghostty-1", text: QUESTION }], "the question, never the correction");
+  assert.ok(spoke("Stopped checking and sent it to atlas agents."));
+  console.log("ok");
+
+  begin("quick task: done while you correct it: its answer isn't said");
+  T.route = () => [{ name: "quick_task", task: "Did the nightly import finish?", cwd: homedir() }];
+  await talk(QUESTION);
+  const done = T.quick;
+  T.route = () => [{ name: "resend_to", session: TERM }];
+  const typed2 = T.typed.length;
+  T.heard = "no, that was for atlas";
+  T.hotkey.onDown();
+  done.resolve({ ...ANSWER, text: "The import finished at 2 am." });
+  await wait(100);
+  await T.hotkey.onUp();
+  await until(() => T.typed.length > typed2);
+  assert.deepEqual(T.typed.slice(typed2), [{ terminalId: "ghostty-1", text: QUESTION }]);
+  await wait(300);
+  assert.ok(!said("answer: The import finished at 2 am."), "not read out after the words went");
+  assert.ok(spoke("Stopped checking and sent it to atlas agents."));
+  console.log("ok");
   setCan("messages");
 }
 

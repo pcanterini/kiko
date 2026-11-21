@@ -75,6 +75,11 @@ export type Case = {
    * "you → session" line. `undone`: "no, cancel that" took them back since (timeline Entry.undone).
    */
   lastSent?: { session: string; text: string; undone?: boolean } | null;
+  /**
+   * The app dealt with your last words itself (timeline Entry.handled): the last "you → app" line
+   * was a quick check it ran, its own answer, or a session it opened.
+   */
+  handled?: "quick_task" | "answered" | "start";
   /** The app just asked a question. Defaults to: the last recent line is "app said: …?". */
   appAsked?: boolean;
   voiceCan?: VoiceCan;
@@ -2280,6 +2285,117 @@ CASES.push(
     say: "Rowan, run the tests.",
     expect: [send("Rowan", { text: /run the tests/i }), { action: "ask", to: "Rowan", text: /tests/i }],
     mustNot: [{ action: "send", text: /^\W*rowan\b/i }, ...reach("api"), ...reach("mintbox")],
+  },
+);
+
+// ── A correction right after the app dealt with the words itself ───────────────────────────────
+// 2026-11-20 (made-up names and words): a question meant for Rowan named no session, and the app ran
+// a quick check on it. "Send that to Rowan, don't check it yourself" (the name misheard) was then
+// passed on to Rowan as is: the correction was typed in, and the question never reached Rowan. Words
+// the app checked, answered or opened a session for are what a correction then sends (resend_to).
+const CHECKED_SESSIONS = (): SessionSpec[] => [
+  { name: "api", title: "Retry limits", status: "idle", activeAgoS: 600, asked: "Where does the retry limit live now?", said: "…It's in the client for now." },
+  {
+    name: "Rowan",
+    folder: "rowan-platform",
+    given: "Rowan",
+    status: "busy",
+    activeAgoS: 40,
+    asked: "Kick off the nightly import on the staging box.",
+    said: "…The nightly import is running on the staging box; I'll tell you when it's done.",
+  },
+  { name: "mintbox", title: "Store screenshot sizes", status: "idle", activeAgoS: 2880, asked: "Make the dark set next.", said: "…The dark set is done." },
+];
+const CHECKED = "Did the nightly import finish on the staging box?";
+const AFTER_CHECK = { sessions: CHECKED_SESSIONS(), recent: [`you → app: ${CHECKED}`, "app said: Checking."], handled: "quick_task" as const };
+const AFTER_ANSWER = { sessions: CHECKED_SESSIONS(), recent: [`you → app: ${CHECKED}`, "app said: I can't tell from here whether it finished."], handled: "answered" as const };
+const CHECKED_TO_ROWAN: Match[] = [{ action: "resend", to: "Rowan", text: /nightly import/i }];
+// The correction itself, typed into a session.
+const THE_CORRECTION: Match[] = [
+  { action: "send", text: /\b(?:send|that was|yourself|instead|should|meant)\b/i },
+  { action: "ask", text: /\b(?:send that|yourself|instead|you should|was meant)\b/i },
+];
+const correctsCheck = (id: string, say: string, why: string, more: Partial<Case> = {}): Case => ({
+  id,
+  tags: ["correction", "app-handled", "synthetic"],
+  why,
+  ...AFTER_CHECK,
+  say,
+  expect: CHECKED_TO_ROWAN,
+  mustNot: [...THE_CORRECTION, ...reach("api"), ...reach("mintbox")],
+  ...more,
+});
+
+CASES.push(
+  correctsCheck(
+    "app-handled-check-send-that",
+    "You should send that to Rowan. Don't check it yourself.",
+    "Synthetic, from the 2026-11-20 quick check incident: after the app checked a question itself, 'send that to Rowan' sends the question there, never the correction.",
+  ),
+  correctsCheck(
+    "app-handled-check-misheard",
+    "No, Rohan should look at that, not you.",
+    "Synthetic, from the 2026-11-20 quick check incident: the name misheard ('Rohan' for Rowan); the question goes to Rowan, never the correction.",
+  ),
+  correctsCheck(
+    "app-handled-check-misheard-roan",
+    "Don't check it yourself, send it to Roan.",
+    "Synthetic: the name misheard ('Roan' for Rowan) after a quick check: the question goes to Rowan, or the app asks where; never the correction.",
+    { expect: [...CHECKED_TO_ROWAN, ASK_USER] },
+  ),
+  correctsCheck("app-handled-check-was-for", "That was for Rowan.", "Synthetic: 'that was for Rowan' right after a quick check sends the question checked to Rowan."),
+  correctsCheck("app-handled-check-ask-instead", "No, ask Rowan instead.", "Synthetic: 'no, ask Rowan instead' after a quick check sends the question to Rowan."),
+  correctsCheck("app-handled-check-should-check", "Rowan should check that, not you.", "Synthetic: 'Rowan should check that' after a quick check sends the question to Rowan."),
+  {
+    id: "app-handled-answer-was-for",
+    tags: ["correction", "app-handled", "synthetic"],
+    why: "Synthetic: after the app answered a question itself, 'that was meant for Rowan' sends the question there.",
+    ...AFTER_ANSWER,
+    say: "That was meant for Rowan.",
+    expect: CHECKED_TO_ROWAN,
+    mustNot: [...THE_CORRECTION, ...reach("api"), ...reach("mintbox")],
+  },
+  {
+    id: "app-handled-start-send-that",
+    tags: ["correction", "app-handled", "synthetic"],
+    why: "Synthetic: after the app opened a session for a request, 'no, send that to Rowan' sends the request there.",
+    sessions: CHECKED_SESSIONS(),
+    recent: ["you → app: Start a session to fix the import retries.", "app said: Opened a new session in the scratch folder."],
+    handled: "start",
+    say: "No, send that to Rowan.",
+    expect: [{ action: "resend", to: "Rowan", text: /import retries/i }],
+    mustNot: [...THE_CORRECTION, START],
+  },
+  {
+    id: "app-handled-check-new-request",
+    tags: ["app-handled", "synthetic"],
+    why: "Synthetic negative: after a quick check, a request of its own naming Rowan goes there as new words; the question checked doesn't.",
+    ...AFTER_CHECK,
+    say: "Rowan, also rerun the failed batch.",
+    expect: [send("Rowan", { text: /rerun the failed batch/i }), { action: "ask", to: "Rowan", text: /failed batch/i }],
+    mustNot: [{ action: "resend" }, { action: "send", text: /nightly import finish/i }],
+  },
+  {
+    id: "app-handled-answer-new-ask",
+    tags: ["app-handled", "synthetic"],
+    why: "Synthetic negative: after the app said the time, 'ask Rowan whether the import finished' is new words for Rowan, not the time question resent.",
+    sessions: CHECKED_SESSIONS(),
+    recent: ["you → app: What time is it?", "app said: It's 9:40 pm."],
+    handled: "answered",
+    say: "Ask Rowan whether the import finished.",
+    expect: [send("Rowan", { text: /import/i }), { action: "ask", to: "Rowan", text: /import/i }],
+    mustNot: [{ action: "resend" }, { action: "send", text: /what time/i }, { action: "ask", text: /what time/i }],
+  },
+  {
+    id: "app-handled-answer-tell-other",
+    tags: ["app-handled", "synthetic"],
+    why: "Synthetic negative: after the app answered, an instruction for mintbox goes there as said; nothing is resent.",
+    sessions: CHECKED_SESSIONS(),
+    recent: ["you → app: What time is it?", "app said: It's 9:40 pm."],
+    handled: "answered",
+    say: "Tell mintbox to make the tablet set next.",
+    expect: [send("mintbox", { text: /tablet set/i }), { action: "ask", to: "mintbox", text: /tablet/i }],
+    mustNot: [{ action: "resend" }, ...reach("Rowan")],
   },
 );
 

@@ -95,7 +95,7 @@ import { cutFromCleaned, type Cleanup } from "./cleanup.ts";
 import { directionOff } from "./direction.ts";
 import { POINTS_BACK, routerWords } from "./router-words.ts";
 import { keyOf, type DictEntry } from "./dictionary.ts";
-import { topicWords } from "./timeline.ts";
+import { topicWords, type Handled } from "./timeline.ts";
 import { directedAtName, leadingName, nameTakenOff, type Lead } from "./wake.ts";
 import { offFromWords, SAYS_OFF_IN_SETTINGS, TURN_ON, VOICE_ON } from "./voice-off.ts";
 import { distance, nearDistance, sounded } from "./words.ts";
@@ -121,6 +121,12 @@ export type Sent = {
   notSent?: boolean;
   /** "No, cancel that" took them back (timeline Entry.undone): a correction sends them on with nothing to stop. */
   undone?: boolean;
+  /**
+   * The app dealt with them itself (timeline Entry.handled: a quick check, its own answer, a session
+   * it opened), so no session got them: `sessionId` and `folder` are "". "Send that to Rowan" sends
+   * them there (and stops the check), never the correction.
+   */
+  app?: Handled;
 };
 
 /**
@@ -627,7 +633,7 @@ async function decideWords(s: DecideState, deps: DecideDeps): Promise<Decision> 
   // Not as the answer to "That already went to clipkit. Which session was it for?": that drops the
   // correction, and the words stay where they went.
   const resendAsked = s.appAsked && RESEND_ASKED.test(s.recent.at(-1) ?? "");
-  if (isClosing(text)) return done("closing", !waiting && s.lastSent && !resendAsked && NEVER_MIND.test(text) ? { type: "undo" } : { type: "wrap_up" });
+  if (isClosing(text)) return done("closing", !waiting && s.lastSent && !s.lastSent.app && !resendAsked && NEVER_MIND.test(text) ? { type: "undo" } : { type: "wrap_up" });
   // The classifier on your words, asked once: here when they may take themselves back, else further down.
   const reachable = sessions.filter((x) => x.place || x.sessionId === waitingId);
   let utterance: Promise<UtteranceDecision | null> | undefined;
@@ -832,7 +838,8 @@ async function decideWords(s: DecideState, deps: DecideDeps): Promise<Decision> 
       if (last) {
         const others = reachable.filter((x) => x.sessionId !== last.sessionId);
         const mentioned = others.filter((x) => mentionsSession(x, text));
-        const classifierSure = d.audience !== "app" && d.audience.sessionId !== last.sessionId && d.audienceConfidence >= s.classifierMinConfidence ? d.audience : null;
+        // Words the app dealt with itself: only a session your words name, or sound like, takes them.
+        const classifierSure = !last.app && d.audience !== "app" && d.audience.sessionId !== last.sessionId && d.audienceConfidence >= s.classifierMinConfidence ? d.audience : null;
         // "That was too rowing, not to Kiko.": a name heard as other words, when nothing else says where.
         const to = mentioned.length === 1 ? mentioned[0] : (classifierSure ?? soundsLikeIn(others, text)?.session ?? null);
         if (!to) {
@@ -1002,6 +1009,8 @@ async function route(s: DecideState, deps: DecideDeps, out: Decision, appParts: 
       ...(heardAsOf(s, out) ? { heardAs: { session: heardAsOf(s, out)!, said: out.heardAs!.heard } } : {}),
       ...(about.length ? { about } : {}),
       ...(s.heardAt ? { heardAt: s.heardAt } : {}),
+      // Your last words, which the app dealt with itself: what "send that to Rowan" now means.
+      ...(s.lastSent?.app ? { handled: { text: s.lastSent.text, how: s.lastSent.app } } : {}),
     });
   } catch (err) {
     // No answer (router.ts route_failed: every try timed out or failed, no key). A new press isn't
@@ -1051,7 +1060,7 @@ async function route(s: DecideState, deps: DecideDeps, out: Decision, appParts: 
   if (calls.some((a) => a.name === "resend_to") && !resendsAsked(s)) out.correction = true;
   const acts: Act[] = [];
   if (notFound) acts.push(notFound);
-  const one = oneTarget(s, out, calls);
+  const one = oneTarget(s, out, resendOnly(s, out, calls));
   if (one.ask) acts.push({ type: "say", text: "Which session is that for?", why: "one_target_unclear" });
   for (const action of one.actions) {
     const act = await guard(s, deps, out, action, appParts);
@@ -1218,7 +1227,7 @@ async function guard(s: DecideState, deps: DecideDeps, out: Decision, action: Ro
         return unsure(s, resend(s, other ?? action.session), "router resend_to");
       }
       if (s.lastSent) return unsure(s, resend(s, action.session), "router resend_to");
-      // Your last words went to the app, not a session: after a repeat, it's that repeat redone.
+      // Your last words went to the app, not a session, and it didn't deal with them itself: after a repeat, it's that repeat redone.
       return (s.lastRepeat && repeatFor(s, action.session)) || { type: "say", text: "Your last words didn't go to a session, so there's nothing to send on.", why: "nothing_to_resend" };
     case "ask_session": {
       const which = await numberedUnclear(s, deps, out, action.session, appParts);
@@ -1362,7 +1371,7 @@ export function spelledOut(write: string) {
 
 /** A code guard that changed where your words go: `rule`, and who picked `from` (the classifier, a router tool). */
 export type Guarded = {
-  rule: "waiting_wins" | "one_target" | "session_over_app" | "asked_about" | "router_words" | "app_words";
+  rule: "waiting_wins" | "one_target" | "session_over_app" | "asked_about" | "router_words" | "app_words" | "resend_only";
   by: string;
   from: string;
   fromName: string;
@@ -1593,6 +1602,25 @@ function oneTarget(s: DecideState, out: Decision, actions: RouterAction[]): { ac
     (out.guards ??= []).push({ rule: "one_target", by: `router ${a.name}`, from: a.session.sessionId, fromName: sessionName(a.session), to: keep?.session.sessionId ?? null, text: s.text });
   }
   return { actions: actions.filter((a) => !isMessage(a) || a === keep), ask: !keep };
+}
+
+/**
+ * The router's resend_to, with a pass_on to the same session (the correction itself, typed in after
+ * the words it's about) or an ask_session there of those same words again: only the resend goes.
+ * Once (2026-11-20, in the eval), "don't check it yourself, send it to Roan" after a quick check got
+ * both resend_to and pass_on of Rowan. A request of its own in the same breath (ask_session with
+ * other words) still goes.
+ */
+function resendOnly(s: DecideState, out: Decision, calls: RouterAction[]): RouterAction[] {
+  const resent = new Set(calls.flatMap((a) => (a.name === "resend_to" ? [a.session.sessionId] : [])));
+  if (!resent.size) return calls;
+  const again = (message: string) => Boolean(s.lastSent) && wordsOf(message) === wordsOf(s.lastSent!.text);
+  return calls.filter((a) => {
+    if ((a.name !== "pass_on" && a.name !== "ask_session") || !resent.has(a.session.sessionId)) return true;
+    if (a.name === "ask_session" && !again(a.message)) return true;
+    (out.guards ??= []).push({ rule: "resend_only", by: `router ${a.name}`, from: a.session.sessionId, fromName: sessionName(a.session), to: null, text: s.text });
+    return false;
+  });
 }
 
 /** Whether your words share more with what `first` was asked (last, and before) than with any of `others`. */
@@ -2272,8 +2300,9 @@ function resend(s: DecideState, to: Session): Act {
     return { type: "say", text: `${where} Which session was it for?`, why: "resend_same" };
   }
   const got = last.sessionId === to.sessionId || Boolean(last.also?.some((x) => x.sessionId === to.sessionId));
-  // Held, nobody got them: "that's for clipkit" says where they belong.
-  if (!got && !last.held && bareReply(last.text)) {
+  // Held, nobody got them: "that's for clipkit" says where they belong. Words the app dealt with
+  // itself answered no session: they were meant for this one.
+  if (!got && !last.held && !last.app && bareReply(last.text)) {
     return {
       type: "say",
       text: `"${last.text.trim()}" was a reply to ${spoken(last.folder)}, so I didn't send it on. What should ${spoken(sessionName(to))} get?`,
@@ -2284,6 +2313,23 @@ function resend(s: DecideState, to: Session): Act {
   // without it, as words named for it do.
   const rest = got ? null : (addressedTo([to], last.text)?.rest ?? nameHeardAs([to], last.text)?.rest ?? null);
   return { type: "resend", session: to, last, ...(rest && rest !== last.text ? { text: rest } : {}) };
+}
+
+/**
+ * How the app dealt with your words itself, when it did (timeline Entry.handled): it ran a quick
+ * check, opened a session, or answered them (the router's own answer: a say with no `why`). Then
+ * "send that to Rowan" or "that was for Rowan" next sends those words there (resend). Null when
+ * anything went to a session, the app asked about them (a question kept: answerQuestion carries
+ * that), or it said only why it couldn't.
+ */
+export function handledBy(d: Decision): Handled | null {
+  if (d.question || d.fallback) return null;
+  const sends = new Set<Act["type"]>(["send", "ask", "resend", "undo", "permission", "answer", "stop", "rename"]);
+  if (d.actions.some((a) => sends.has(a.type))) return null;
+  if (d.actions.some((a) => a.type === "quick_task")) return "quick_task";
+  if (d.actions.some((a) => a.type === "start")) return "start";
+  if (d.actions.some((a) => a.type === "say" && !a.why)) return "answered";
+  return null;
 }
 
 /**

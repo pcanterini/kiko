@@ -17,7 +17,10 @@ import type { DictEntry } from "./dictionary.ts";
 import type { VoiceCan } from "./settings.ts";
 import { hedged, type Try } from "./hedge.ts";
 import { flat } from "./text.ts";
-import { tail } from "./timeline.ts";
+import { tail, type Handled } from "./timeline.ts";
+
+/** How the app dealt with your last words itself, in <you_handled>. */
+const HANDLED_HOW: Record<Handled, string> = { quick_task: "a quick check", answered: "your own answer", start: "a new session" };
 
 /**
  * The instructions, for what the "Voice can" level allows; `dictionary` when the words are about one;
@@ -31,6 +34,7 @@ const system = (
   about = false,
   nameUpFront = false,
   heardAs = false,
+  handled = false,
 ) => `You are the voice app between the user and their Claude Code sessions. The user talks to you with push-to-talk; everything you write is spoken. You get what the user just said when it's for you, or when it isn't clear who it's for. Each message lists the running sessions (what each was last asked and last said, and the topics the user asked it about before), which one is waiting for a reply or just spoke to the user, and the recent conversation across all of them.
 
 Act only through tools. Anything the user should hear goes in say; never write anything else. The app does only what your other tool calls do: say never sends, passes on, asks or does anything, so never say that something was or will be done without the tool call that does it.
@@ -42,7 +46,7 @@ Do one of these:
 ${manage()}
 ${check()}${dictionary ? `\n${dictionaryRules()}` : ""}
 - ${SETTINGS_ARE_THE_APPS}
-- If they ask about the sessions themselves, answer with say from the list and the recent conversation: names and status, briefly. Mention background sessions only if asked.${about ? `\n${aboutRules()}` : ""}${nameUpFront ? `\n${nameUpFrontRules()}` : ""}${heardAs ? `\n${heardAsRules()}` : ""}
+- If they ask about the sessions themselves, answer with say from the list and the recent conversation: names and status, briefly. Mention background sessions only if asked.${about ? `\n${aboutRules()}` : ""}${nameUpFront ? `\n${nameUpFrontRules()}` : ""}${heardAs ? `\n${heardAsRules()}` : ""}${handled ? `\n${handledRules()}` : ""}
 - If they ask the time, the date or the day, answer with say from <now>, the user's local time.
 - If it's unclear which session they mean, first look at what each last said: when the words answer one of them (it asked or offered exactly this), use that one, the one that spoke to the user last first. When they pick up a topic the user raised with one session (in its last asked or asked before), use that one. Otherwise prefer the one dealt with last (words that carry on that conversation, like "one more thing" or "also", stay with it), then the most recently active. Ask one short question with say only when it's still a toss-up. A product, company or tool the words only talk about ("build something like Stripe", "how does Linear do it") is what they're about, not who they're for: never say it isn't one of their sessions.
 - If the app just asked the user a question (see the recent conversation), their words answer it: carry out the request they made before it. When the app asked which session some words were for, or offered to pass them on, <asked_where> has those words, which went nowhere yet: if the answer picks a session (by name, said loosely, or by its place in the question) or says yes to the offer (with or without the session's name), call pass_on with it, and the app sends those words there, never the answer; if the answer also asks for more, call ask_session with it instead, with those words and the addition written as one message for that Claude. When the answer only picks a session for another earlier request ("the claude code speech one, please"), that request is what goes there: ask_session with it written for that Claude, since pass_on would send only the answer. A name with only misheard words around it (speech-to-text's take on "this to" or "send it to") still only picks that session.
@@ -118,6 +122,16 @@ function nameUpFrontRules() {
  */
 function heardAsRules() {
   return `- <name_heard_as said="…"> names the session whose name the opening words sound like: speech-to-text often writes a name as ordinary words ("Too rowing" for "To Rowan", "Two Lacey" for "To Lacy"), and opening words like these are the user saying who it's for. Unless those words plainly belong to the sentence as said ("Too bad, the tests failed"), the words are for that session: pass_on to it, over the one dealt with last, a session whose topic they share, or one waiting for a reply. The app leaves the misheard name out of what it sends.`;
+}
+
+/**
+ * The user's last words, which the app dealt with itself (decide.ts handledBy: a quick check, its own
+ * answer, a session it opened), shown as <you_handled>. Once (2026-11-20), a question for a session
+ * that named none got a quick check; "you want to send that to <it>, don't check it yourself" was
+ * then passed on itself, and the question never reached the session.
+ */
+function handledRules() {
+  return `- <you_handled> has the user's last words, which you dealt with yourself (a quick check, your own answer, a new session) instead of sending them to a session. When the words now say those were meant for a session instead (send that to it, that was for it, ask it instead, it should check that, don't do it yourself), call resend_to with that session and say nothing: the app sends the words in <you_handled> there, never these, and stops a check still going. Never pass_on such a correction. New words of their own for a session, a request or a question, are pass_on as usual.`;
 }
 
 /** Adding and removing words in the app's speech-to-text dictionary. */
@@ -290,6 +304,8 @@ export class Router {
       heardAs?: { session: Session; said: string };
       /** When the words were heard (Date.now() at the transcript): the log tells Kiko's wait from the model's. */
       heardAt?: number;
+      /** Your last words, which the app dealt with itself (decide.ts handledBy), shown as <you_handled>. */
+      handled?: { text: string; how: Handled };
     },
     onText: (delta: string) => void,
   ): Promise<{ text: string; actions: Action[]; claimsAction: boolean; dropped?: Dropped[]; usage: TokenUsage; costUsd: number } | null> {
@@ -337,6 +353,7 @@ export class Router {
             }\n</asked_where>`,
           ]
         : []),
+      ...(input.handled ? [`<you_handled how="${HANDLED_HOW[input.handled.how]}">${input.handled.text}</you_handled>`] : []),
       ...(aboutDictionary ? [`<dictionary>\n${(input.dictionary ?? []).map((e) => `${e.heard} → ${e.write}`).join("\n") || "(empty)"}\n</dictionary>`] : []),
       `The user said: ${text}`,
     ].join("\n");
@@ -544,7 +561,7 @@ export class Router {
 
     this.abort = new AbortController();
     const signal = this.abort.signal;
-    const instructions = system(voiceCan, aboutDictionary, about.length > 0, nameAlso.length > 0, heardAs !== null);
+    const instructions = system(voiceCan, aboutDictionary, about.length > 0, nameAlso.length > 0, heardAs !== null, Boolean(input.handled));
     const started = performance.now();
     // Kiko's own wait, from your words heard to the request: the rest of the time is the model's.
     const sinceHeardMs = input.heardAt ? Math.max(0, Date.now() - input.heardAt) : undefined;
